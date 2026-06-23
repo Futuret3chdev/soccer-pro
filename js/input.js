@@ -99,20 +99,23 @@ export function initInput() {
 
   function poll() {
     if (engine) {
-      let x = 0, z = 0;
+      // Pitch axes: X = length (attack toward +X), Z = width (strafe)
+      let mx = 0;
+      let mz = 0;
       if (stick.active) {
-        x = stick.x;
-        z = stick.z;
+        mx = -stick.z;
+        mz = stick.x;
       } else {
-        if (keys.KeyA || keys.ArrowLeft) x -= 1;
-        if (keys.KeyD || keys.ArrowRight) x += 1;
-        if (keys.KeyW || keys.ArrowUp) z -= 1;
-        if (keys.KeyS || keys.ArrowDown) z += 1;
-        const len = Math.hypot(x, z);
-        if (len > 1) { x /= len; z /= len; }
+        if (keys.KeyW || keys.ArrowUp) mx += 1;
+        if (keys.KeyS || keys.ArrowDown) mx -= 1;
+        if (keys.KeyA || keys.ArrowLeft) mz -= 1;
+        if (keys.KeyD || keys.ArrowRight) mz += 1;
       }
+      const len = Math.hypot(mx, mz);
+      if (len > 1) { mx /= len; mz /= len; }
       engine.setInput({
-        x, z,
+        x: mx,
+        z: mz,
         sprint: keys.ShiftLeft || keys.ShiftRight || sprintTouch,
         shootHold: shootHold.active
       });

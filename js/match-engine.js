@@ -236,8 +236,12 @@ export class MatchEngine {
     const controlled = this.entities.find(e => e.controlled);
     if (controlled) {
       const sp = controlled.speed * (this.input.sprint && controlled.stamina > 0 ? controlled.sprintMul : 1);
-      controlled.vel.x = this.input.x * sp;
-      controlled.vel.z = this.input.z * sp;
+      const ix = this.input.x;
+      const iz = this.input.z;
+      if (Math.abs(ix) > 0.05 || Math.abs(iz) > 0.05) {
+        controlled.vel.x = ix * sp;
+        controlled.vel.z = iz * sp;
+      }
       if (this.input.sprint) controlled.stamina = Math.max(0, controlled.stamina - dt * 12);
       else controlled.stamina = Math.min(100, controlled.stamina + dt * 6);
 
@@ -279,7 +283,9 @@ export class MatchEngine {
     }
     animateHumanoid(e.mesh, spd, e.kickTimer > 0.15, dt);
 
-    e.vel.multiplyScalar(0.85);
+    if (!e.controlled) e.vel.multiplyScalar(0.85);
+    else if (Math.abs(e.vel.x) < 0.05 && Math.abs(e.vel.z) < 0.05) e.vel.set(0, 0, 0);
+    else e.vel.multiplyScalar(0.92);
   }
 
   _aiMove(e, dt) {

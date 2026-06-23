@@ -103,52 +103,43 @@ export class Stadium {
     const crowdTex = loader.load('/assets/crowd-texture.jpg');
     crowdTex.wrapS = THREE.RepeatWrapping;
     crowdTex.wrapT = THREE.ClampToEdgeWrapping;
-    crowdTex.repeat.set(6, 1);
+    crowdTex.repeat.set(4, 1);
     crowdTex.colorSpace = THREE.SRGBColorSpace;
 
     const standMat = new THREE.MeshStandardMaterial({
       map: crowdTex,
       roughness: 0.9,
       emissive: 0x111122,
-      emissiveIntensity: 0.15
+      emissiveIntensity: 0.12
     });
 
-    const makeStand = (z, rotY = 0) => {
-      const geo = new THREE.CylinderGeometry(42, 48, 14, 48, 1, true, 0, Math.PI);
-      const stand = new THREE.Mesh(geo, standMat);
-      stand.position.set(0, 7, z);
-      stand.rotation.y = rotY;
-      stand.receiveShadow = true;
-      this.group.add(stand);
-    };
-
-    makeStand(-PITCH_W / 2 - 18, 0);
-    makeStand(PITCH_W / 2 + 18, Math.PI);
-
-    const sideGeo = new THREE.BoxGeometry(PITCH_L + 30, 10, 8);
-    const sideMat = new THREE.MeshStandardMaterial({
-      map: crowdTex,
-      roughness: 0.85,
-      emissive: 0x0a0a18,
-      emissiveIntensity: 0.1
-    });
+    // Sideline crowd tiers (flat boxes — no vertical cylinders)
     [-1, 1].forEach((side) => {
-      const stand = new THREE.Mesh(sideGeo, sideMat);
-      stand.position.set(0, 5, side * (PITCH_W / 2 + 14));
-      stand.receiveShadow = true;
+      for (let tier = 0; tier < 3; tier++) {
+        const stand = new THREE.Mesh(
+          new THREE.BoxGeometry(PITCH_L + 24, 3.2, 5),
+          standMat
+        );
+        stand.position.set(0, 2 + tier * 3.2, side * (PITCH_W / 2 + 8 + tier * 2));
+        stand.receiveShadow = true;
+        this.group.add(stand);
+      }
+    });
+
+    // Behind-goal crowd
+    [-1, 1].forEach((side) => {
+      const stand = new THREE.Mesh(
+        new THREE.BoxGeometry(8, 10, PITCH_W + 16),
+        standMat
+      );
+      stand.position.set(side * (PITCH_L / 2 + 12), 5, 0);
       this.group.add(stand);
     });
 
     const roofMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.7, metalness: 0.3 });
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(PITCH_L + 40, 2, PITCH_W + 50), roofMat);
-    roof.position.y = 18;
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(PITCH_L + 36, 1.5, PITCH_W + 44), roofMat);
+    roof.position.y = 14;
     this.group.add(roof);
-
-    const trackMat = new THREE.MeshStandardMaterial({ color: 0x333344, roughness: 0.8 });
-    const track = new THREE.Mesh(new THREE.RingGeometry(44, 52, 64), trackMat);
-    track.rotation.x = -Math.PI / 2;
-    track.position.y = 0.01;
-    this.group.add(track);
   }
 
   _buildLights() {
