@@ -51,8 +51,9 @@ function pick(arr) {
 }
 
 export class Commentary {
-  constructor(onLine) {
+  constructor(onLine, voice = null) {
     this.onLine = onLine || (() => {});
+    this.voice = voice;
     this.cooldown = 0;
     this.buildTimer = 0;
   }
@@ -62,26 +63,27 @@ export class Commentary {
     this.buildTimer -= dt;
   }
 
-  say(key, custom) {
+  say(key, custom, priority = 'normal') {
     const line = custom || pick(LINES[key] || LINES.buildUp);
     this.onLine(line);
+    this.voice?.speak(line, { priority });
     this.cooldown = 2.5;
   }
 
   maybeBuildUp(dt) {
     if (this.cooldown > 0 || this.buildTimer > 0) return;
     this.buildTimer = 8 + Math.random() * 10;
-    this.say('buildUp');
+    this.say('buildUp', null, 'low');
   }
 
-  kickoff() { this.say('kickoff'); }
-  secondHalf() { this.say('secondHalf'); }
-  halfTime() { this.say('half'); }
+  kickoff() { this.say('kickoff', null, 'high'); }
+  secondHalf() { this.say('secondHalf', null, 'high'); }
+  halfTime() { this.say('half', null, 'high'); }
   throwIn(teamName) { this.say('throwIn', `${teamName} — ${pick(LINES.throwIn)}`); }
   goal(scorerTeam, isHomeConcede) {
     this.say(isHomeConcede ? 'concede' : 'goal', isHomeConcede
       ? pick(LINES.concede)
-      : pick(LINES.goal));
+      : pick(LINES.goal), 'high');
   }
   shot() {
     if (this.cooldown <= 0) this.say('shot');

@@ -477,6 +477,21 @@ button { font-family: var(--font); cursor: pointer; border: none; }
   transition: width 0.05s linear;
 }
 
+.btn-voice-toggle {
+  position: absolute;
+  top: 14px; right: 66px;
+  z-index: 15;
+  background: rgba(0,0,0,0.5);
+  border: 1px solid var(--border);
+  color: #fff;
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  font-size: 1.1rem;
+}
+.btn-voice-toggle.voice-off {
+  opacity: 0.55;
+  border-color: rgba(255,255,255,0.15);
+}
 .btn-pause {
   position: absolute;
   top: 14px; right: 14px;

@@ -4,6 +4,7 @@ import { createHumanoid, animateHumanoid } from './models.js';
 import { FORMATIONS, genSquad } from './data.js';
 import { Audio } from './audio.js';
 import { Commentary } from './commentary.js';
+import { commentaryVoice } from './commentary-voice.js';
 
 const MATCH_SEC = 120;
 const GOAL_W = 7.32;
@@ -22,7 +23,7 @@ export class MatchEngine {
     this.onGoal = opts.onGoal || (() => {});
     this.onEnd = opts.onEnd || (() => {});
     this.onCommentary = opts.onCommentary || (() => {});
-    this.commentary = new Commentary((line) => this.onCommentary(line));
+    this.commentary = new Commentary((line) => this.onCommentary(line), commentaryVoice);
     this.setPiece = null;
     this.outCooldown = 0;
 
@@ -206,10 +207,12 @@ export class MatchEngine {
     this.running = false;
     cancelAnimationFrame(this._raf);
     this._resizeObserver?.disconnect();
+    commentaryVoice.stop();
   }
 
   pause(v) {
     this.paused = v;
+    if (v) commentaryVoice.stop();
   }
 
   _loop() {

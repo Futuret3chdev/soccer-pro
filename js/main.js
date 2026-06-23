@@ -2,6 +2,7 @@ import { loadCareer, saveCareer, defaultCareer } from './data.js';
 import { Management } from './management.js';
 import { initInput, bindEngine } from './input.js';
 import { Audio } from './audio.js';
+import { commentaryVoice } from './commentary-voice.js';
 
 const $ = id => document.getElementById(id);
 
@@ -16,6 +17,16 @@ function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === `${name}-screen`));
   document.body.classList.toggle('match-active', name === 'match');
   document.body.classList.toggle('modal-open', false);
+}
+
+function syncVoiceToggleUI() {
+  const btn = $('btn-voice-toggle');
+  if (!btn) return;
+  const on = commentaryVoice.isEnabled();
+  btn.classList.toggle('voice-off', !on);
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.title = on ? 'Voice commentary on' : 'Voice commentary off';
+  btn.textContent = on ? '🔊' : '🔇';
 }
 
 function toast(msg) {
@@ -92,6 +103,8 @@ async function startMatch(opts) {
     await waitFrames(1);
     engine.start();
     Audio.init();
+    commentaryVoice.init();
+    syncVoiceToggleUI();
 
     clearInterval(hudTimer);
     hudTimer = setInterval(() => {
@@ -162,11 +175,13 @@ bindClick('btn-career', () => {
   mgmt.render();
   showScreen('mgmt');
   Audio.init();
+  commentaryVoice.init();
 });
 
 bindClick('btn-quick', () => {
   quickMode = true;
   currentFixture = null;
+  commentaryVoice.init();
   startMatch({ opponent: 'City FC', squad: career.squad.filter(p => p.starter).slice(0, 7) });
 });
 
@@ -177,6 +192,20 @@ bindClick('btn-how', () => {
 bindClick('btn-close-controls', () => {
   $('controls-modal')?.classList.add('hidden');
   document.body.classList.remove('modal-open');
+});
+
+bindClick('btn-voice-toggle', () => {
+  commentaryVoice.init();
+  commentaryVoice.toggle();
+  syncVoiceToggleUI();
+});
+
+bindClick('btn-voice-setting', () => {
+  commentaryVoice.init();
+  commentaryVoice.toggle();
+  syncVoiceToggleUI();
+  const el = $('voice-setting-label');
+  if (el) el.textContent = commentaryVoice.isEnabled() ? 'Voice commentary: On' : 'Voice commentary: Off';
 });
 
 bindClick('btn-pause', () => {
@@ -207,6 +236,11 @@ bindClick('btn-results-mgmt', () => {
 
 window.App = { showScreen, toast };
 initInput();
+syncVoiceToggleUI();
+const voiceLabel = $('voice-setting-label');
+if (voiceLabel) {
+  voiceLabel.textContent = commentaryVoice.isEnabled() ? 'Voice commentary: On' : 'Voice commentary: Off';
+}
 
 document.addEventListener('touchmove', (e) => {
   if (document.body.classList.contains('match-active')) e.preventDefault();

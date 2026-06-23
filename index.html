@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=4">
+  <link rel="stylesheet" href="/css/style.css?v=5">
 </head>
 <body>
   <div id="app">
@@ -150,12 +150,14 @@
         </div>
       </div>
 
+      <button class="btn-voice-toggle" id="btn-voice-toggle" type="button" aria-pressed="true" title="Voice commentary on">🔊</button>
       <button class="btn-pause" id="btn-pause" type="button">⏸</button>
 
       <div class="pause-overlay hidden" id="pause-overlay">
         <div class="pause-card">
           <h3>Paused</h3>
           <button class="btn-primary" id="btn-resume" type="button">Resume</button>
+          <button class="btn-secondary" id="btn-voice-setting" type="button"><span id="voice-setting-label">Voice commentary: On</span></button>
           <button class="btn-secondary" id="btn-quit-match" type="button">Quit to Menu</button>
         </div>
       </div>
@@ -190,12 +192,13 @@
           <li><kbd>Space</kbd> / Shoot — Kick / Power shot (hold)</li>
           <li><kbd>E</kbd> / Pass — Short pass to nearest teammate</li>
           <li><kbd>Tab</kbd> — Switch controlled player</li>
+          <li>🔊 — Toggle live voice commentary during a match</li>
         </ul>
         <button class="btn-primary" id="btn-close-controls" type="button">Got it</button>
       </div>
     </div>
   </div>
 
-  <script type="module" src="/js/main.js?v=4"></script>
+  <script type="module" src="/js/main.js?v=5"></script>
 </body>
 </html>
