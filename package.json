@@ -1,0 +1,6 @@
+{
+  "name": "soccer-pro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FIFA-style 3D soccer game with career management"
+}

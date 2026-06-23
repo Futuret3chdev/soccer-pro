@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0a1628">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Soccer Pro">
+  <title>Soccer Pro — FIFA Style</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css?v=1">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <!-- TITLE -->
+    <section id="title-screen" class="screen active">
+      <div class="title-bg"></div>
+      <div class="title-vignette"></div>
+      <header class="title-header">
+        <span class="title-badge">OFFICIAL</span>
+        <h1 class="title-logo">SOCCER<span>PRO</span></h1>
+        <p class="title-tag">FIFA Broadcast Edition</p>
+      </header>
+      <nav class="title-nav">
+        <button class="btn-primary btn-xl" id="btn-career" type="button">Career Mode</button>
+        <button class="btn-secondary btn-xl" id="btn-quick" type="button">Quick Match</button>
+        <button class="btn-ghost" id="btn-how" type="button">Controls</button>
+      </nav>
+      <footer class="title-footer">© Soccer Pro 2026</footer>
+    </section>
+
+    <!-- MANAGEMENT -->
+    <section id="mgmt-screen" class="screen">
+      <header class="mgmt-top">
+        <button class="btn-icon" id="mgmt-back" type="button" aria-label="Back">←</button>
+        <div class="mgmt-club">
+          <span class="mgmt-crest" id="mgmt-crest">SP</span>
+          <div>
+            <h2 id="mgmt-club-name">Metro United</h2>
+            <p id="mgmt-league">Premier Division · Matchday <span id="mgmt-matchday">1</span></p>
+          </div>
+        </div>
+        <div class="mgmt-funds">
+          <small>Transfer Budget</small>
+          <strong id="mgmt-budget">£50.0M</strong>
+        </div>
+      </header>
+
+      <nav class="mgmt-tabs">
+        <button class="mgmt-tab active" data-tab="squad" type="button">Squad</button>
+        <button class="mgmt-tab" data-tab="formation" type="button">Formation</button>
+        <button class="mgmt-tab" data-tab="transfers" type="button">Transfers</button>
+        <button class="mgmt-tab" data-tab="fixtures" type="button">Fixtures</button>
+      </nav>
+
+      <div class="mgmt-body">
+        <div class="mgmt-panel active" data-panel="squad">
+          <div class="squad-grid" id="squad-grid"></div>
+        </div>
+        <div class="mgmt-panel" data-panel="formation">
+          <div class="pitch-mini-wrap">
+            <canvas id="formation-canvas" width="600" height="400"></canvas>
+          </div>
+          <p class="mgmt-hint">Tap players in squad to toggle starting XI (7-a-side)</p>
+          <select id="formation-select" class="field-select">
+            <option value="4-2">4-2 Attacking</option>
+            <option value="3-3">3-3 Balanced</option>
+            <option value="2-4">2-4 Defensive</option>
+          </select>
+        </div>
+        <div class="mgmt-panel" data-panel="transfers">
+          <div class="transfer-bar">
+            <input id="transfer-search" class="field-input" type="search" placeholder="Search players…">
+            <button id="transfer-scout" class="btn-secondary" type="button">Scout Market</button>
+          </div>
+          <div class="transfer-list" id="transfer-list"></div>
+        </div>
+        <div class="mgmt-panel" data-panel="fixtures">
+          <ul class="fixture-list" id="fixture-list"></ul>
+        </div>
+      </div>
+
+      <footer class="mgmt-footer">
+        <div class="mgmt-stats">
+          <span>W <strong id="stat-w">0</strong></span>
+          <span>D <strong id="stat-d">0</strong></span>
+          <span>L <strong id="stat-l">0</strong></span>
+        </div>
+        <button class="btn-primary btn-play" id="btn-play-match" type="button">Play Match</button>
+      </footer>
+    </section>
+
+    <!-- MATCH -->
+    <section id="match-screen" class="screen">
+      <canvas id="game-canvas"></canvas>
+      <div class="match-hud">
+        <div class="scoreboard">
+          <div class="team home">
+            <span class="team-dot" id="hud-home-color"></span>
+            <span id="hud-home-name">Metro United</span>
+          </div>
+          <div class="score">
+            <span id="hud-home-score">0</span>
+            <span class="score-sep">:</span>
+            <span id="hud-away-score">0</span>
+          </div>
+          <div class="team away">
+            <span id="hud-away-name">City FC</span>
+            <span class="team-dot" id="hud-away-color"></span>
+          </div>
+        </div>
+        <div class="match-meta">
+          <span id="hud-timer">02:00</span>
+          <span id="hud-period">1st Half</span>
+        </div>
+      </div>
+      <div class="match-announce hidden" id="match-announce"></div>
+      <div class="power-meter hidden" id="power-meter"><div id="power-fill"></div></div>
+
+      <div class="touch-controls" id="touch-controls">
+        <div class="stick-zone" id="stick-zone"><div class="stick-knob" id="stick-knob"></div></div>
+        <div class="action-pad">
+          <button class="act-btn" id="btn-pass" type="button">Pass</button>
+          <button class="act-btn act-main" id="btn-shoot" type="button">Shoot</button>
+          <button class="act-btn" id="btn-sprint" type="button">Sprint</button>
+        </div>
+      </div>
+
+      <button class="btn-pause" id="btn-pause" type="button">⏸</button>
+
+      <div class="pause-overlay hidden" id="pause-overlay">
+        <div class="pause-card">
+          <h3>Paused</h3>
+          <button class="btn-primary" id="btn-resume" type="button">Resume</button>
+          <button class="btn-secondary" id="btn-quit-match" type="button">Quit to Menu</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section id="results-screen" class="screen">
+      <div class="results-card">
+        <p class="results-label">Full Time</p>
+        <div class="results-score">
+          <span id="res-home-name">Metro United</span>
+          <strong id="res-score">0 - 0</strong>
+          <span id="res-away-name">City FC</span>
+        </div>
+        <p class="results-msg" id="res-msg">Draw</p>
+        <div class="results-actions">
+          <button class="btn-primary" id="btn-rematch" type="button">Play Again</button>
+          <button class="btn-secondary" id="btn-results-mgmt" type="button">Management</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTROLS MODAL -->
+    <div class="modal hidden" id="controls-modal">
+      <div class="modal-card">
+        <h3>Controls</h3>
+        <ul class="controls-list">
+          <li><kbd>WASD</kbd> / Left stick — Move</li>
+          <li><kbd>Shift</kbd> / Sprint — Burst speed</li>
+          <li><kbd>Space</kbd> / Shoot — Kick / Power shot (hold)</li>
+          <li><kbd>E</kbd> / Pass — Short pass to nearest teammate</li>
+          <li><kbd>Tab</kbd> — Switch controlled player</li>
+        </ul>
+        <button class="btn-primary" id="btn-close-controls" type="button">Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/main.js?v=1"></script>
+</body>
+</html>
