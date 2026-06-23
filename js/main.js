@@ -58,6 +58,10 @@ async function startMatch(opts) {
     engine = new MatchEngine(canvas, {
       homeName: career.clubName,
       awayName: opts.opponent || 'City FC',
+      onCommentary: (line) => {
+        const el = $('commentary-text');
+        if (el) el.textContent = line;
+      },
       homeColor: career.clubColor || '#1565c0',
       awayColor: '#c62828',
       homeSquad: opts.squad || career.squad.filter(p => p.starter),

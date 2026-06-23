@@ -362,6 +362,36 @@ button { font-family: var(--font); cursor: pointer; border: none; }
   letter-spacing: 0.14em;
   font-weight: 700;
 }
+.commentary-bar {
+  position: absolute;
+  bottom: 52px;
+  left: 12px;
+  right: 12px;
+  z-index: 11;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.62);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  pointer-events: none;
+  max-width: 520px;
+}
+.commentary-live {
+  color: #ff5252;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+#commentary-text {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: #e8f0ff;
+}
 .desktop-hints {
   position: absolute;
   bottom: 14px;
@@ -537,6 +567,7 @@ button { font-family: var(--font); cursor: pointer; border: none; }
 @media (hover: none) and (pointer: coarse) {
   .touch-controls { display: block; }
   .desktop-hints { display: none; }
+  .commentary-bar { bottom: 168px; max-width: none; }
 }
 @media (hover: hover) and (pointer: fine) {
   .touch-controls { display: none !important; }

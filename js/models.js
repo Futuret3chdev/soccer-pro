@@ -9,8 +9,43 @@ const SKIN_TONES = [0xf5d0a9, 0xe8b88a, 0xc68642, 0x8d5524, 0x5c3317];
 
 export function skinColor(t) {
   const idx = Math.floor(t * (SKIN_TONES.length - 1));
-  const c = new THREE.Color(SKIN_TONES[idx]);
-  return c;
+  return new THREE.Color(SKIN_TONES[idx]);
+}
+
+function makeNumberTexture(num, jerseyHex) {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = jerseyHex.startsWith('#') ? jerseyHex : '#1565c0';
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.font = 'bold 72px Bebas Neue, Arial Black, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = 5;
+  ctx.strokeText(String(num), 64, 72);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(String(num), 64, 72);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function addJerseyNumber(group, number, scale, jerseyHex, y, z, rotY) {
+  const tex = makeNumberTexture(number, jerseyHex);
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex,
+    transparent: true,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2
+  });
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.36 * scale, 0.42 * scale), mat);
+  plane.position.set(0, y, z);
+  plane.rotation.y = rotY;
+  group.add(plane);
+  return plane;
 }
 
 export function createHumanoid(opts = {}) {
@@ -28,6 +63,7 @@ export function createHumanoid(opts = {}) {
   const skin = skinColor(skinTone);
   const jersey = new THREE.Color(jerseyColor);
   const shorts = new THREE.Color(shortsColor);
+  const jerseyHex = typeof jerseyColor === 'string' ? jerseyColor : `#${jersey.getHexString()}`;
 
   const matSkin = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.65, metalness: 0.05 });
   const matJersey = new THREE.MeshStandardMaterial({ color: jersey, roughness: 0.55, metalness: 0.08 });
@@ -36,25 +72,24 @@ export function createHumanoid(opts = {}) {
   const matHair = new THREE.MeshStandardMaterial({ color: hairColor, roughness: 0.8 });
   const matSocks = new THREE.MeshStandardMaterial({ color: jersey, roughness: 0.7 });
 
-  // Torso
   const torso = new THREE.Mesh(bodyGeo(0.22 * scale, 0.42 * scale), matJersey);
   torso.position.y = 1.05 * scale;
   torso.castShadow = true;
   group.add(torso);
 
-  // Head
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.17 * scale, 16, 16), matSkin);
   head.position.y = 1.52 * scale;
   head.castShadow = true;
   group.add(head);
 
-  // Hair
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.175 * scale, 12, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), matHair);
+  const hair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.175 * scale, 12, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
+    matHair
+  );
   hair.position.y = 1.58 * scale;
   hair.rotation.x = -0.15;
   group.add(hair);
 
-  // Arms
   const mkArm = (side) => {
     const arm = new THREE.Group();
     const upper = new THREE.Mesh(bodyGeo(0.06 * scale, 0.22 * scale), matJersey);
@@ -62,31 +97,24 @@ export function createHumanoid(opts = {}) {
     upper.castShadow = true;
     const fore = new THREE.Mesh(bodyGeo(0.055 * scale, 0.2 * scale), matSkin);
     fore.position.y = -0.32 * scale;
-    fore.castShadow = true;
     const hand = new THREE.Mesh(new THREE.SphereGeometry(0.05 * scale, 8, 8), matSkin);
     hand.position.y = -0.46 * scale;
     arm.add(upper, fore, hand);
     arm.position.set(side * 0.28 * scale, 1.18 * scale, 0);
-    arm.userData.upper = upper;
-    arm.userData.fore = fore;
     return arm;
   };
   const armL = mkArm(-1);
   const armR = mkArm(1);
   group.add(armL, armR);
 
-  // Legs
   const mkLeg = (side) => {
     const leg = new THREE.Group();
     const thigh = new THREE.Mesh(bodyGeo(0.08 * scale, 0.24 * scale), matShorts);
     thigh.position.y = -0.14 * scale;
-    thigh.castShadow = true;
     const shin = new THREE.Mesh(bodyGeo(0.065 * scale, 0.24 * scale), matSocks);
     shin.position.y = -0.38 * scale;
-    shin.castShadow = true;
     const boot = new THREE.Mesh(new THREE.BoxGeometry(0.1 * scale, 0.06 * scale, 0.22 * scale), matBoots);
     boot.position.set(0, -0.54 * scale, 0.04 * scale);
-    boot.castShadow = true;
     leg.add(thigh, shin, boot);
     leg.position.set(side * 0.1 * scale, 0.72 * scale, 0);
     leg.userData.thigh = thigh;
@@ -97,22 +125,10 @@ export function createHumanoid(opts = {}) {
   const legR = mkLeg(1);
   group.add(legL, legR);
 
-  // Jersey number (sprite)
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.font = 'bold 44px Inter, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(String(number), 32, 34);
-  const numTex = new THREE.CanvasTexture(canvas);
-  const numMat = new THREE.SpriteMaterial({ map: numTex, transparent: true });
-  const numSprite = new THREE.Sprite(numMat);
-  numSprite.scale.set(0.35 * scale, 0.35 * scale, 1);
-  numSprite.position.set(0, 1.08 * scale, 0.24 * scale);
-  group.add(numSprite);
+  const numY = 1.08 * scale;
+  const numZ = 0.245 * scale;
+  addJerseyNumber(group, number, scale, jerseyHex, numY, numZ, 0);
+  addJerseyNumber(group, number, scale, jerseyHex, numY, -numZ, Math.PI);
 
   group.userData = {
     torso, head, armL, armR, legL, legR,

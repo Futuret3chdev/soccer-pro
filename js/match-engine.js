@@ -3,6 +3,7 @@ import { Stadium, PITCH_W, PITCH_L } from './stadium.js';
 import { createHumanoid, animateHumanoid } from './models.js';
 import { FORMATIONS, genSquad } from './data.js';
 import { Audio } from './audio.js';
+import { Commentary } from './commentary.js';
 
 const MATCH_SEC = 120;
 const GOAL_W = 7.32;
@@ -20,6 +21,10 @@ export class MatchEngine {
     this.formation = opts.formation || '4-2';
     this.onGoal = opts.onGoal || (() => {});
     this.onEnd = opts.onEnd || (() => {});
+    this.onCommentary = opts.onCommentary || (() => {});
+    this.commentary = new Commentary((line) => this.onCommentary(line));
+    this.setPiece = null;
+    this.outCooldown = 0;
 
     try {
       this.renderer = new THREE.WebGLRenderer({
@@ -192,6 +197,7 @@ export class MatchEngine {
     this.clock.start();
     Audio.init();
     Audio.whistle();
+    this.commentary.kickoff();
     this._render();
     this._loop();
   }
@@ -222,8 +228,10 @@ export class MatchEngine {
       if (this.half === 1) {
         this.half = 2;
         this.timeLeft = MATCH_SEC / 2;
+        this.commentary.halfTime();
         this._kickoff();
         Audio.whistle();
+        this.commentary.secondHalf();
       } else {
         this.stop();
         this.onEnd({ home: this.homeScore, away: this.awayScore });
@@ -232,6 +240,15 @@ export class MatchEngine {
     }
 
     if (this.announceTimer > 0) this.announceTimer -= dt;
+    if (this.outCooldown > 0) this.outCooldown -= dt;
+    this.commentary.tick(dt);
+    if (!this.setPiece && this.announceTimer <= 0) this.commentary.maybeBuildUp(dt);
+
+    if (this.setPiece) {
+      this._updateSetPiece(dt);
+      this._updateCamera(dt);
+      return;
+    }
 
     const controlled = this.entities.find(e => e.controlled);
     if (controlled) {
@@ -346,6 +363,7 @@ export class MatchEngine {
     this.ball.owner = null;
     this.ball.lastOwner = player;
     Audio.kick();
+    if (power > 0.55) this.commentary.shot();
   }
 
   _passBall(player) {
@@ -378,17 +396,7 @@ export class MatchEngine {
     b.vel.multiplyScalar(0.985);
     b.mesh.position.y = 0.11 + Math.max(0, b.vel.length() * 0.008);
 
-    const px = b.mesh.position.x;
-    const pz = b.mesh.position.z;
-
-    if (Math.abs(pz) > PITCH_W / 2 - 0.5) {
-      b.vel.z *= -0.6;
-      b.mesh.position.z = THREE.MathUtils.clamp(pz, -PITCH_W / 2 + 0.5, PITCH_W / 2 - 0.5);
-    }
-    if (Math.abs(px) > PITCH_L / 2 - 0.5) {
-      b.vel.x *= -0.5;
-      b.mesh.position.x = THREE.MathUtils.clamp(px, -PITCH_L / 2 + 0.5, PITCH_L / 2 - 0.5);
-    }
+    this._checkOutOfPlay();
 
     this.entities.forEach(e => {
       const d = e.mesh.position.distanceTo(b.mesh.position);
@@ -408,11 +416,13 @@ export class MatchEngine {
     if (bx < -PITCH_L / 2 + GOAL_DEPTH && this.announceTimer <= 0) {
       this.awayScore++;
       this.onGoal('away', this.awayScore, this.homeScore);
+      this.commentary.goal(this.awayName, true);
       this._celebrate();
       this._kickoff();
     } else if (bx > PITCH_L / 2 - GOAL_DEPTH && this.announceTimer <= 0) {
       this.homeScore++;
       this.onGoal('home', this.homeScore, this.awayScore);
+      this.commentary.goal(this.homeName, false);
       this._celebrate();
       this._kickoff();
     }
@@ -422,6 +432,75 @@ export class MatchEngine {
     Audio.goal();
     Audio.crowdCheer();
     this.announceTimer = 2.5;
+  }
+
+  _checkOutOfPlay() {
+    const b = this.ball;
+    if (b.owner || this.setPiece || this.outCooldown > 0 || this.announceTimer > 1) return;
+    const px = b.mesh.position.x;
+    const pz = b.mesh.position.z;
+    const outZ = Math.abs(pz) > PITCH_W / 2;
+    const outX = Math.abs(px) > PITCH_L / 2;
+    if (!outX && !outZ) return;
+    if (outX && Math.abs(pz) <= GOAL_W / 2) return;
+    this._awardThrowIn(px, pz);
+  }
+
+  _awardThrowIn(px, pz) {
+    const lastHome = this.ball.lastOwner?.isHome;
+    const throwHome = lastHome === undefined ? Math.random() > 0.5 : !lastHome;
+    let x = THREE.MathUtils.clamp(px, -PITCH_L / 2 + 2, PITCH_L / 2 - 2);
+    let z = pz;
+    if (Math.abs(z) >= PITCH_W / 2) z = Math.sign(z || 1) * (PITCH_W / 2 - 0.35);
+    if (Math.abs(px) >= PITCH_L / 2) x = Math.sign(px || 1) * (PITCH_L / 2 - 0.35);
+
+    this.ball.mesh.position.set(x, 0.11, z);
+    this.ball.vel.set(0, 0, 0);
+    this.ball.owner = null;
+
+    const team = this.entities.filter(e => e.isHome === throwHome && !e.isGK);
+    let nearest = team[0];
+    let bestD = Infinity;
+    team.forEach((p) => {
+      const d = p.mesh.position.distanceTo(this.ball.mesh.position);
+      if (d < bestD) { bestD = d; nearest = p; }
+    });
+
+    if (nearest) {
+      nearest.mesh.position.set(x, 0, z);
+      const pushZ = z > 0 ? -1.5 : 1.5;
+      nearest.mesh.position.z = z + (Math.abs(z) > PITCH_W / 2 - 1 ? pushZ : pushZ * 0.3);
+      this.setPiece = { player: nearest, timer: 1.8 };
+    }
+
+    this.outCooldown = 2.5;
+    this.announceTimer = 1.8;
+    const name = throwHome ? this.homeName : this.awayName;
+    this.commentary.throwIn(name);
+    Audio.whistle();
+  }
+
+  _updateSetPiece(dt) {
+    if (!this.setPiece) return;
+    this.setPiece.timer -= dt;
+    if (this.setPiece.timer > 0) return;
+
+    const p = this.setPiece.player;
+    if (!p) { this.setPiece = null; return; }
+
+    const cx = p.mesh.position.x;
+    const cz = p.mesh.position.z;
+    const toCenter = new THREE.Vector3(0, 0, 0).sub(p.mesh.position);
+    toCenter.y = 0;
+    toCenter.normalize();
+    if (toCenter.lengthSq() < 0.01) toCenter.set(p.isHome ? 1 : -1, 0, 0);
+
+    this.ball.mesh.position.set(cx, 0.11, cz);
+    this.ball.vel.copy(toCenter.multiplyScalar(11));
+    this.ball.lastOwner = p;
+    this.setPiece = null;
+    this.outCooldown = 1.5;
+    Audio.pass();
   }
 
   _kickoff() {

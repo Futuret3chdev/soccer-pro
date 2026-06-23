@@ -5,26 +5,41 @@ const PITCH_L = 105;
 
 export { PITCH_W, PITCH_L };
 
+function makeGrassTexture() {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 512;
+  const ctx = c.getContext('2d');
+  for (let row = 0; row < 16; row++) {
+    for (let col = 0; col < 16; col++) {
+      const bright = (row + col) % 2 === 0;
+      ctx.fillStyle = bright ? '#3d9e48' : '#348a3f';
+      ctx.fillRect(col * 32, row * 32, 32, 32);
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(14, 9);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 export class Stadium {
   constructor(scene, loader) {
     this.scene = scene;
     this.group = new THREE.Group();
     scene.add(this.group);
-    this._buildPitch(loader);
+    this._buildPitch();
     this._buildStadium(loader);
     this._buildLights();
   }
 
-  _buildPitch(loader) {
-    const grassTex = loader.load('/assets/grass-texture.jpg');
-    grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
-    grassTex.repeat.set(12, 18);
-    grassTex.colorSpace = THREE.SRGBColorSpace;
-
+  _buildPitch() {
+    const grassTex = makeGrassTexture();
     const pitchGeo = new THREE.PlaneGeometry(PITCH_L, PITCH_W);
     const pitchMat = new THREE.MeshStandardMaterial({
       map: grassTex,
-      roughness: 0.85,
+      roughness: 0.88,
       metalness: 0.02
     });
     const pitch = new THREE.Mesh(pitchGeo, pitchMat);
@@ -32,13 +47,19 @@ export class Stadium {
     pitch.receiveShadow = true;
     this.group.add(pitch);
 
-    const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x1a2838, roughness: 0.95 });
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(PITCH_L + 60, PITCH_W + 60), floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.05;
+    this.group.add(floor);
+
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
     const lineW = 0.12;
 
     const addLine = (w, h, x, z) => {
       const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), lineMat);
       m.rotation.x = -Math.PI / 2;
-      m.position.set(x, 0.02, z);
+      m.position.set(x, 0.03, z);
       this.group.add(m);
     };
 
@@ -53,7 +74,7 @@ export class Stadium {
       lineMat
     );
     circle.rotation.x = -Math.PI / 2;
-    circle.position.y = 0.02;
+    circle.position.y = 0.03;
     this.group.add(circle);
 
     const penW = 40.32;
@@ -74,8 +95,7 @@ export class Stadium {
     goalGroup.position.set(x, 0, 0);
 
     const postMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.6, roughness: 0.3 });
-    const postGeo = new THREE.CylinderGeometry(0.08, 0.08, 2.44, 12);
-    const postL = new THREE.Mesh(postGeo, postMat);
+    const postL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.44, 12), postMat);
     postL.position.set(0, 1.22, -3.66);
     postL.castShadow = true;
     const postR = postL.clone();
@@ -83,7 +103,6 @@ export class Stadium {
     const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 7.32, 12), postMat);
     bar.rotation.x = Math.PI / 2;
     bar.position.y = 2.44;
-    bar.castShadow = true;
 
     const netMat = new THREE.MeshBasicMaterial({
       color,
@@ -103,60 +122,49 @@ export class Stadium {
     const crowdTex = loader.load('/assets/crowd-texture.jpg');
     crowdTex.wrapS = THREE.RepeatWrapping;
     crowdTex.wrapT = THREE.ClampToEdgeWrapping;
-    crowdTex.repeat.set(4, 1);
+    crowdTex.repeat.set(3, 1);
     crowdTex.colorSpace = THREE.SRGBColorSpace;
 
-    const standMat = new THREE.MeshStandardMaterial({
+    const crowdMat = new THREE.MeshStandardMaterial({
       map: crowdTex,
-      roughness: 0.9,
-      emissive: 0x111122,
-      emissiveIntensity: 0.12
+      roughness: 0.92,
+      side: THREE.FrontSide
     });
 
-    // Sideline crowd tiers (flat boxes — no vertical cylinders)
+    const addCrowdWall = (w, h, x, y, z, rotY) => {
+      const wall = new THREE.Mesh(new THREE.PlaneGeometry(w, h), crowdMat);
+      wall.position.set(x, y, z);
+      wall.rotation.y = rotY;
+      this.group.add(wall);
+    };
+
+    // Sideline crowd — vertical walls facing the pitch
     [-1, 1].forEach((side) => {
-      for (let tier = 0; tier < 3; tier++) {
-        const stand = new THREE.Mesh(
-          new THREE.BoxGeometry(PITCH_L + 24, 3.2, 5),
-          standMat
-        );
-        stand.position.set(0, 2 + tier * 3.2, side * (PITCH_W / 2 + 8 + tier * 2));
-        stand.receiveShadow = true;
-        this.group.add(stand);
-      }
+      const z = side * (PITCH_W / 2 + 6);
+      addCrowdWall(PITCH_L + 16, 11, 0, 5.5, z, side > 0 ? Math.PI : 0);
+      addCrowdWall(PITCH_L + 16, 8, 0, 13, z + side * 3, side > 0 ? Math.PI : 0);
     });
 
     // Behind-goal crowd
     [-1, 1].forEach((side) => {
-      const stand = new THREE.Mesh(
-        new THREE.BoxGeometry(8, 10, PITCH_W + 16),
-        standMat
-      );
-      stand.position.set(side * (PITCH_L / 2 + 12), 5, 0);
-      this.group.add(stand);
+      const x = side * (PITCH_L / 2 + 6);
+      addCrowdWall(PITCH_W + 12, 11, x, 5.5, 0, side > 0 ? -Math.PI / 2 : Math.PI / 2);
     });
 
     const roofMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.7, metalness: 0.3 });
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(PITCH_L + 36, 1.5, PITCH_W + 44), roofMat);
-    roof.position.y = 14;
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(PITCH_L + 32, 1.2, PITCH_W + 36), roofMat);
+    roof.position.y = 16;
     this.group.add(roof);
   }
 
   _buildLights() {
-    const ambient = new THREE.AmbientLight(0x404060, 0.5);
-    this.scene.add(ambient);
+    this.scene.add(new THREE.AmbientLight(0x506080, 0.55));
+    this.scene.add(new THREE.HemisphereLight(0x99aacc, 0x2a4a2a, 0.45));
 
-    const hemi = new THREE.HemisphereLight(0x8899cc, 0x1a2a1a, 0.4);
-    this.scene.add(hemi);
-
-    [[-30, 25, -20], [30, 25, 20], [-30, 25, 20], [30, 25, -20]].forEach(([x, y, z]) => {
-      const spot = new THREE.SpotLight(0xfff5e0, 120, 200, Math.PI / 5, 0.4, 1);
+    [[-28, 22, -18], [28, 22, 18], [-28, 22, 18], [28, 22, -18]].forEach(([x, y, z]) => {
+      const spot = new THREE.SpotLight(0xfff5e0, 100, 220, Math.PI / 4.5, 0.5, 1);
       spot.position.set(x, y, z);
       spot.target.position.set(0, 0, 0);
-      spot.castShadow = true;
-      spot.shadow.mapSize.set(1024, 1024);
-      spot.shadow.camera.near = 10;
-      spot.shadow.camera.far = 120;
       this.scene.add(spot);
       this.scene.add(spot.target);
     });
