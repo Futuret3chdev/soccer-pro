@@ -12,15 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=1">
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
-    }
-  }
-  </script>
+  <link rel="stylesheet" href="/css/style.css?v=2">
 </head>
 <body>
   <div id="app">
@@ -29,16 +21,20 @@
       <div class="title-bg"></div>
       <div class="title-vignette"></div>
       <header class="title-header">
-        <span class="title-badge">OFFICIAL</span>
+        <span class="title-badge">MT ECOSYSTEM</span>
         <h1 class="title-logo">SOCCER<span>PRO</span></h1>
         <p class="title-tag">FIFA Broadcast Edition</p>
+        <p class="title-credit">Made by <strong>Futuret3ch</strong> &amp; <strong>MemeTorrent</strong></p>
       </header>
       <nav class="title-nav">
         <button class="btn-primary btn-xl" id="btn-career" type="button">Career Mode</button>
         <button class="btn-secondary btn-xl" id="btn-quick" type="button">Quick Match</button>
         <button class="btn-ghost" id="btn-how" type="button">Controls</button>
       </nav>
-      <footer class="title-footer">© Soccer Pro 2026</footer>
+      <footer class="title-footer">
+        <span class="mt-eco-pill">MT ECOSYSTEM</span>
+        © 2026 Futuret3ch &amp; MemeTorrent
+      </footer>
     </section>
 
     <!-- MANAGEMENT -->
@@ -93,6 +89,7 @@
       </div>
 
       <footer class="mgmt-footer">
+        <span class="mgmt-eco">MT ECOSYSTEM · Futuret3ch &amp; MemeTorrent</span>
         <div class="mgmt-stats">
           <span>W <strong id="stat-w">0</strong></span>
           <span>D <strong id="stat-d">0</strong></span>
@@ -104,7 +101,11 @@
 
     <!-- MATCH -->
     <section id="match-screen" class="screen">
-      <canvas id="game-canvas"></canvas>
+      <div class="match-canvas-wrap">
+        <canvas id="game-canvas"></canvas>
+        <p class="match-load-msg hidden" id="match-load-msg">Loading match…</p>
+        <p class="match-error-msg hidden" id="match-error-msg"></p>
+      </div>
       <div class="match-hud">
         <div class="scoreboard">
           <div class="team home">
@@ -124,7 +125,14 @@
         <div class="match-meta">
           <span id="hud-timer">02:00</span>
           <span id="hud-period">1st Half</span>
+          <span class="hud-credit">MT ECOSYSTEM</span>
         </div>
+      </div>
+      <div class="desktop-hints" id="desktop-hints">
+        <span><kbd>WASD</kbd> Move</span>
+        <span><kbd>Space</kbd> Shoot</span>
+        <span><kbd>E</kbd> Pass</span>
+        <span><kbd>Shift</kbd> Sprint</span>
       </div>
       <div class="match-announce hidden" id="match-announce"></div>
       <div class="power-meter hidden" id="power-meter"><div id="power-fill"></div></div>
@@ -182,6 +190,6 @@
     </div>
   </div>
 
-  <script type="module" src="/js/main.js?v=1"></script>
+  <script type="module" src="/js/main.js?v=2"></script>
 </body>
 </html>

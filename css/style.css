@@ -19,15 +19,31 @@
 
 html, body {
   height: 100%;
+  height: 100dvh;
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
   touch-action: manipulation;
+  overscroll-behavior: none;
+  position: fixed;
+  width: 100%;
+  left: 0;
+  top: 0;
 }
 
-#app { height: 100%; position: relative; }
+body.match-active {
+  touch-action: none;
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+  height: 100dvh;
+  position: relative;
+  overflow: hidden;
+}
 
 .screen {
   position: absolute;
@@ -75,10 +91,31 @@ html, body {
   text-shadow: 0 4px 40px rgba(0, 230, 118, 0.35);
 }
 .title-logo span { color: var(--accent); }
-.title-tag { color: var(--muted); margin: 8px 0 40px; font-size: 0.95rem; }
+.title-tag { color: var(--muted); margin: 8px 0 8px; font-size: 0.95rem; }
+.title-credit { color: var(--muted); font-size: 0.85rem; margin-bottom: 32px; }
+.title-credit strong { color: var(--text); }
+.mt-eco-pill {
+  display: inline-block;
+  margin-right: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(0, 230, 118, 0.15);
+  border: 1px solid rgba(0, 230, 118, 0.35);
+  color: var(--accent);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
 
 .title-nav { display: flex; flex-direction: column; gap: 12px; width: min(320px, 88vw); }
-.title-footer { position: absolute; bottom: 20px; color: var(--muted); font-size: 0.75rem; }
+.title-nav button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.title-footer {
+  position: absolute;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  color: var(--muted);
+  font-size: 0.72rem;
+  padding: 0 16px;
+}
 
 /* ── BUTTONS ── */
 button { font-family: var(--font); cursor: pointer; border: none; }
@@ -261,20 +298,91 @@ button { font-family: var(--font); cursor: pointer; border: none; }
   position: absolute;
   bottom: 0; left: 0; right: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 14px 16px;
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
   background: var(--panel);
   border-top: 1px solid var(--border);
   backdrop-filter: blur(12px);
+}
+.mgmt-eco {
+  width: 100%;
+  text-align: center;
+  font-size: 0.65rem;
+  color: var(--accent);
+  letter-spacing: 0.1em;
+  font-weight: 600;
 }
 .mgmt-stats { display: flex; gap: 16px; color: var(--muted); font-size: 0.85rem; }
 .mgmt-stats strong { color: var(--text); font-size: 1.1rem; }
 .btn-play { padding: 14px 32px; font-size: 1.05rem; }
 
 /* ── MATCH ── */
-#match-screen { background: #000; }
-#game-canvas { width: 100%; height: 100%; display: block; }
+#match-screen {
+  background: #000;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  touch-action: none;
+}
+.match-canvas-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: #0a1628;
+  overflow: hidden;
+}
+#game-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  outline: none;
+}
+.match-load-msg, .match-error-msg {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.95rem;
+  padding: 24px;
+  text-align: center;
+  pointer-events: none;
+}
+.match-error-msg { color: var(--danger); }
+.hud-credit {
+  color: var(--accent);
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+}
+.desktop-hints {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  z-index: 11;
+  pointer-events: none;
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.55);
+  background: rgba(0,0,0,0.35);
+  padding: 6px 14px;
+  border-radius: 999px;
+}
+.desktop-hints kbd {
+  font-size: 0.65rem;
+  padding: 1px 5px;
+}
 
 .match-hud {
   position: absolute;
@@ -413,6 +521,9 @@ button { font-family: var(--font); cursor: pointer; border: none; }
   width: 64px; height: 64px;
   font-size: 0.7rem;
   font-weight: 700;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 .act-main {
   background: rgba(0, 230, 118, 0.35);
@@ -423,8 +534,13 @@ button { font-family: var(--font); cursor: pointer; border: none; }
   height: 52px;
 }
 
-@media (pointer: coarse) {
+@media (hover: none) and (pointer: coarse) {
   .touch-controls { display: block; }
+  .desktop-hints { display: none; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .touch-controls { display: none !important; }
+  .desktop-hints { display: flex; }
 }
 
 /* ── RESULTS ── */

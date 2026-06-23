@@ -1,5 +1,4 @@
 import { loadCareer, saveCareer, defaultCareer } from './data.js';
-import { MatchEngine } from './match-engine.js';
 import { Management } from './management.js';
 import { initInput, bindEngine } from './input.js';
 import { Audio } from './audio.js';
@@ -15,6 +14,8 @@ let currentFixture = null;
 
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === `${name}-screen`));
+  document.body.classList.toggle('match-active', name === 'match');
+  document.body.classList.toggle('modal-open', false);
 }
 
 function toast(msg) {
@@ -31,61 +32,94 @@ function formatTime(sec) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function startMatch(opts) {
+function waitFrames(n = 2) {
+  return new Promise(resolve => {
+    const step = (left) => {
+      if (left <= 0) resolve();
+      else requestAnimationFrame(() => step(left - 1));
+    };
+    step(n);
+  });
+}
+
+async function startMatch(opts) {
   if (engine) engine.stop();
   const canvas = $('game-canvas');
-  engine = new MatchEngine(canvas, {
-    homeName: career.clubName,
-    awayName: opts.opponent || 'City FC',
-    homeColor: career.clubColor || '#1565c0',
-    awayColor: '#c62828',
-    homeSquad: opts.squad || career.squad.filter(p => p.starter),
-    formation: career.formation,
-    onGoal: (side, home, away) => {
-      $('hud-home-score').textContent = home;
-      $('hud-away-score').textContent = away;
-      const msg = side === 'home' ? 'GOAL!' : 'CONCEDED';
-      const ann = $('match-announce');
-      ann.textContent = msg;
-      ann.classList.add('show');
-      setTimeout(() => ann.classList.remove('show'), 2000);
-    },
-    onEnd: (score) => endMatch(score)
-  });
+  const loadMsg = $('match-load-msg');
+  const errMsg = $('match-error-msg');
 
-  $('hud-home-name').textContent = career.clubName;
-  $('hud-away-name').textContent = opts.opponent || 'City FC';
-  $('hud-home-score').textContent = '0';
-  $('hud-away-score').textContent = '0';
-  $('hud-home-color').style.background = career.clubColor || '#1565c0';
-  $('hud-away-color').style.background = '#c62828';
-  $('pause-overlay')?.classList.add('hidden');
-
-  initInput();
-  bindEngine(engine);
-  engine.start();
   showScreen('match');
-  Audio.init();
+  loadMsg?.classList.remove('hidden');
+  errMsg?.classList.add('hidden');
+  await waitFrames(2);
 
-  clearInterval(hudTimer);
-  hudTimer = setInterval(() => {
-    if (!engine?.running) return;
-    const s = engine.getState();
-    $('hud-timer').textContent = formatTime(s.timeLeft);
-    $('hud-period').textContent = s.half === 1 ? '1st Half' : '2nd Half';
-    const pm = $('power-meter');
-    const pf = $('power-fill');
-    if (s.power > 0.05) {
-      pm?.classList.remove('hidden');
-      if (pf) pf.style.width = `${s.power * 100}%`;
-    } else {
-      pm?.classList.add('hidden');
+  try {
+    const { MatchEngine } = await import('./match-engine.js');
+    engine = new MatchEngine(canvas, {
+      homeName: career.clubName,
+      awayName: opts.opponent || 'City FC',
+      homeColor: career.clubColor || '#1565c0',
+      awayColor: '#c62828',
+      homeSquad: opts.squad || career.squad.filter(p => p.starter),
+      formation: career.formation,
+      onGoal: (side, home, away) => {
+        $('hud-home-score').textContent = home;
+        $('hud-away-score').textContent = away;
+        const msg = side === 'home' ? 'GOAL!' : 'CONCEDED';
+        const ann = $('match-announce');
+        ann.textContent = msg;
+        ann.classList.add('show');
+        setTimeout(() => ann.classList.remove('show'), 2000);
+      },
+      onEnd: (score) => endMatch(score)
+    });
+
+    loadMsg?.classList.add('hidden');
+    $('hud-home-name').textContent = career.clubName;
+    $('hud-away-name').textContent = opts.opponent || 'City FC';
+    $('hud-home-score').textContent = '0';
+    $('hud-away-score').textContent = '0';
+    $('hud-home-color').style.background = career.clubColor || '#1565c0';
+    $('hud-away-color').style.background = '#c62828';
+    $('pause-overlay')?.classList.add('hidden');
+
+    bindEngine(engine);
+    engine.resize();
+    await waitFrames(1);
+    engine.start();
+    Audio.init();
+
+    clearInterval(hudTimer);
+    hudTimer = setInterval(() => {
+      if (!engine?.running) return;
+      const s = engine.getState();
+      $('hud-timer').textContent = formatTime(s.timeLeft);
+      $('hud-period').textContent = s.half === 1 ? '1st Half' : '2nd Half';
+      const pm = $('power-meter');
+      const pf = $('power-fill');
+      if (s.power > 0.05) {
+        pm?.classList.remove('hidden');
+        if (pf) pf.style.width = `${s.power * 100}%`;
+      } else {
+        pm?.classList.add('hidden');
+      }
+    }, 200);
+  } catch (err) {
+    console.error('Match start failed:', err);
+    loadMsg?.classList.add('hidden');
+    if (errMsg) {
+      errMsg.textContent = err.webglFailed
+        ? 'WebGL not supported on this device. Try another browser.'
+        : `Could not start match: ${err.message || 'unknown error'}`;
+      errMsg.classList.remove('hidden');
     }
-  }, 200);
+    toast('Match failed to load');
+  }
 }
 
 function endMatch({ home, away }) {
   clearInterval(hudTimer);
+  document.body.classList.remove('match-active');
   $('res-home-name').textContent = career.clubName;
   $('res-away-name').textContent = engine?.awayName || currentFixture?.opponent || 'Away';
   $('res-score').textContent = `${home} - ${away}`;
@@ -108,8 +142,16 @@ function initMgmt() {
   });
 }
 
-// ── UI bindings ──
-$('btn-career')?.addEventListener('click', () => {
+function bindClick(id, fn) {
+  const el = $(id);
+  if (!el) return;
+  el.addEventListener('click', (e) => {
+    e.preventDefault();
+    fn();
+  });
+}
+
+bindClick('btn-career', () => {
   if (!career.squad?.length) career = defaultCareer();
   saveCareer(career);
   initMgmt();
@@ -118,39 +160,42 @@ $('btn-career')?.addEventListener('click', () => {
   Audio.init();
 });
 
-$('btn-quick')?.addEventListener('click', () => {
+bindClick('btn-quick', () => {
   quickMode = true;
   currentFixture = null;
   startMatch({ opponent: 'City FC', squad: career.squad.filter(p => p.starter).slice(0, 7) });
 });
 
-$('btn-how')?.addEventListener('click', () => $('controls-modal')?.classList.remove('hidden'));
-$('btn-close-controls')?.addEventListener('click', () => $('controls-modal')?.classList.add('hidden'));
+bindClick('btn-how', () => {
+  $('controls-modal')?.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+});
+bindClick('btn-close-controls', () => {
+  $('controls-modal')?.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+});
 
-$('btn-pause')?.addEventListener('click', () => {
+bindClick('btn-pause', () => {
   engine?.pause(true);
   $('pause-overlay')?.classList.remove('hidden');
 });
-$('btn-resume')?.addEventListener('click', () => {
+bindClick('btn-resume', () => {
   engine?.pause(false);
   $('pause-overlay')?.classList.add('hidden');
 });
-$('btn-quit-match')?.addEventListener('click', () => {
+bindClick('btn-quit-match', () => {
   engine?.stop();
   clearInterval(hudTimer);
+  document.body.classList.remove('match-active');
   showScreen('title');
 });
 
-$('btn-rematch')?.addEventListener('click', () => {
-  if (quickMode) {
-    startMatch({ opponent: 'City FC' });
-  } else if (mgmt) {
-    showScreen('mgmt');
-  } else {
-    showScreen('title');
-  }
+bindClick('btn-rematch', () => {
+  if (quickMode) startMatch({ opponent: 'City FC' });
+  else if (mgmt) showScreen('mgmt');
+  else showScreen('title');
 });
-$('btn-results-mgmt')?.addEventListener('click', () => {
+bindClick('btn-results-mgmt', () => {
   initMgmt();
   mgmt.render();
   showScreen('mgmt');
@@ -159,7 +204,10 @@ $('btn-results-mgmt')?.addEventListener('click', () => {
 window.App = { showScreen, toast };
 initInput();
 
-// Ensure career exists
+document.addEventListener('touchmove', (e) => {
+  if (document.body.classList.contains('match-active')) e.preventDefault();
+}, { passive: false });
+
 if (!career?.squad?.length) {
   career = defaultCareer();
   saveCareer(career);

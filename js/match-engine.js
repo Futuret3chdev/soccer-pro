@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { Stadium, PITCH_W, PITCH_L } from './stadium.js';
 import { createHumanoid, animateHumanoid } from './models.js';
 import { FORMATIONS, genSquad } from './data.js';
@@ -21,8 +21,18 @@ export class MatchEngine {
     this.onGoal = opts.onGoal || (() => {});
     this.onEnd = opts.onEnd || (() => {});
 
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    try {
+      this.renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: true,
+        alpha: false,
+        powerPreference: 'high-performance'
+      });
+    } catch (err) {
+      err.webglFailed = true;
+      throw err;
+    }
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -30,7 +40,7 @@ export class MatchEngine {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0a1628);
-    this.scene.fog = new THREE.Fog(0x0a1628, 80, 180);
+    this.scene.fog = new THREE.Fog(0x0a1628, 100, 260);
 
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.5, 300);
     this.loader = new THREE.TextureLoader();
@@ -54,8 +64,19 @@ export class MatchEngine {
     this.announceTimer = 0;
 
     this._spawnTeams();
+    this._lastW = 0;
+    this._lastH = 0;
+    this._resizeObserver = new ResizeObserver(() => this.resize());
+    if (canvas.parentElement) this._resizeObserver.observe(canvas.parentElement);
+    window.addEventListener('resize', () => this.resize());
+    this.camera.position.set(20, 16, 28);
+    this.camera.lookAt(0, 1, 0);
+    this._updateCamera(1);
+  }
+
+  resize() {
     this._resize();
-    window.addEventListener('resize', () => this._resize());
+    if (this.running) this._render();
   }
 
   _createBall() {
@@ -137,8 +158,13 @@ export class MatchEngine {
   }
 
   _resize() {
-    const w = this.canvas.clientWidth;
-    const h = this.canvas.clientHeight;
+    const parent = this.canvas.parentElement;
+    const rect = parent ? parent.getBoundingClientRect() : this.canvas.getBoundingClientRect();
+    const w = Math.max(1, Math.round(rect.width));
+    const h = Math.max(1, Math.round(rect.height));
+    if (w === this._lastW && h === this._lastH) return;
+    this._lastW = w;
+    this._lastH = h;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -160,17 +186,20 @@ export class MatchEngine {
   }
 
   start() {
+    this.resize();
     this.running = true;
     this.paused = false;
     this.clock.start();
     Audio.init();
     Audio.whistle();
+    this._render();
     this._loop();
   }
 
   stop() {
     this.running = false;
     cancelAnimationFrame(this._raf);
+    this._resizeObserver?.disconnect();
   }
 
   pause(v) {
@@ -405,12 +434,12 @@ export class MatchEngine {
     const target = this.ball.mesh.position.clone();
     const side = target.x > 0 ? -1 : 1;
     const ideal = new THREE.Vector3(
-      target.x + side * 28,
-      14,
-      target.z * 0.35 + 22
+      target.x + side * 22,
+      12,
+      target.z * 0.3 + 18
     );
-    this.camera.position.lerp(ideal, dt * 2.5);
-    this.camera.lookAt(target.x, 1.5, target.z);
+    this.camera.position.lerp(ideal, dt * 3);
+    this.camera.lookAt(target.x, 1.2, target.z);
   }
 
   _render() {

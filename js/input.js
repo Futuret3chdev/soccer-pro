@@ -10,22 +10,30 @@ export function bindEngine(e) {
   engine = e;
 }
 
+function pulseInput(patch) {
+  engine?.setInput(patch);
+}
+
 export function initInput() {
   if (inited) return;
   inited = true;
 
   window.addEventListener('keydown', (e) => {
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) {
+      e.preventDefault();
+    }
     keys[e.code] = true;
-    if (e.code === 'Tab') { e.preventDefault(); engine?.setInput({ switch: true }); }
+    if (e.code === 'Tab') engine?.setInput({ switch: true });
     if (e.code === 'Space') shootHold.active = true;
-    if (e.code === 'KeyE') engine?.setInput({ pass: true });
+    if (e.code === 'KeyE') pulseInput({ pass: true });
   });
+
   window.addEventListener('keyup', (e) => {
     keys[e.code] = false;
     if (e.code === 'Space') {
-      engine?.setInput({ shoot: true, shootHold: false });
+      pulseInput({ shoot: true, shootHold: false });
       shootHold.active = false;
-      setTimeout(() => engine?.setInput({ shoot: false }), 50);
+      setTimeout(() => pulseInput({ shoot: false }), 50);
     }
   });
 
@@ -51,47 +59,64 @@ export function initInput() {
       stick.active = false;
       knob.style.transform = 'translate(-50%, -50%)';
     };
-    zone.addEventListener('pointerdown', (e) => { zone.setPointerCapture(e.pointerId); updateStick(e.clientX, e.clientY); });
-    zone.addEventListener('pointermove', (e) => { if (zone.hasPointerCapture(e.pointerId)) updateStick(e.clientX, e.clientY); });
+    const onDown = (e) => {
+      e.preventDefault();
+      zone.setPointerCapture(e.pointerId);
+      updateStick(e.clientX, e.clientY);
+    };
+    const onMove = (e) => {
+      if (zone.hasPointerCapture(e.pointerId)) {
+        e.preventDefault();
+        updateStick(e.clientX, e.clientY);
+      }
+    };
+    zone.addEventListener('pointerdown', onDown);
+    zone.addEventListener('pointermove', onMove);
     zone.addEventListener('pointerup', endStick);
     zone.addEventListener('pointercancel', endStick);
   }
 
-  $('btn-pass')?.addEventListener('pointerdown', () => {
-    engine?.setInput({ pass: true });
-    setTimeout(() => engine?.setInput({ pass: false }), 50);
+  const bindAct = (id, down, up) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); down(); });
+    if (up) el.addEventListener('pointerup', (e) => { e.preventDefault(); up(); });
+    el.addEventListener('click', (e) => e.preventDefault());
+  };
+
+  bindAct('btn-pass', () => {
+    pulseInput({ pass: true });
+    setTimeout(() => pulseInput({ pass: false }), 50);
   });
-  $('btn-shoot')?.addEventListener('pointerdown', () => { shootHold.active = true; });
-  $('btn-shoot')?.addEventListener('pointerup', () => {
-    engine?.setInput({ shoot: true, shootHold: false });
+  bindAct('btn-shoot', () => { shootHold.active = true; }, () => {
+    pulseInput({ shoot: true, shootHold: false });
     shootHold.active = false;
-    setTimeout(() => engine?.setInput({ shoot: false }), 50);
+    setTimeout(() => pulseInput({ shoot: false }), 50);
   });
 
   let sprintTouch = false;
-  $('btn-sprint')?.addEventListener('pointerdown', () => { sprintTouch = true; });
-  $('btn-sprint')?.addEventListener('pointerup', () => { sprintTouch = false; });
+  bindAct('btn-sprint', () => { sprintTouch = true; }, () => { sprintTouch = false; });
 
   function poll() {
-    if (!engine) { requestAnimationFrame(poll); return; }
-    let x = 0, z = 0;
-    if (stick.active) {
-      x = stick.x;
-      z = stick.z;
-    } else {
-      if (keys.KeyA || keys.ArrowLeft) x -= 1;
-      if (keys.KeyD || keys.ArrowRight) x += 1;
-      if (keys.KeyW || keys.ArrowUp) z -= 1;
-      if (keys.KeyS || keys.ArrowDown) z += 1;
-      const len = Math.hypot(x, z);
-      if (len > 1) { x /= len; z /= len; }
+    if (engine) {
+      let x = 0, z = 0;
+      if (stick.active) {
+        x = stick.x;
+        z = stick.z;
+      } else {
+        if (keys.KeyA || keys.ArrowLeft) x -= 1;
+        if (keys.KeyD || keys.ArrowRight) x += 1;
+        if (keys.KeyW || keys.ArrowUp) z -= 1;
+        if (keys.KeyS || keys.ArrowDown) z += 1;
+        const len = Math.hypot(x, z);
+        if (len > 1) { x /= len; z /= len; }
+      }
+      engine.setInput({
+        x, z,
+        sprint: keys.ShiftLeft || keys.ShiftRight || sprintTouch,
+        shootHold: shootHold.active
+      });
     }
-
-    engine.setInput({
-      x, z,
-      sprint: keys.ShiftLeft || keys.ShiftRight || sprintTouch,
-      shootHold: shootHold.active
-    });
     requestAnimationFrame(poll);
   }
   poll();
