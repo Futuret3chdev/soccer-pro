@@ -22,9 +22,16 @@ function showScreen(name) {
 function syncVoiceToggleUI() {
   const btn = $('btn-voice-toggle');
   if (!btn) return;
+  const supported = commentaryVoice.isSupported();
   const on = commentaryVoice.isEnabled();
   btn.classList.toggle('voice-off', !on);
+  btn.classList.toggle('voice-unsupported', !supported);
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  if (!supported) {
+    btn.title = 'Voice not supported in this browser';
+    btn.textContent = '🔇';
+    return;
+  }
   btn.title = on ? 'Voice commentary on' : 'Voice commentary off';
   btn.textContent = on ? '🔊' : '🔇';
 }
@@ -54,6 +61,7 @@ function waitFrames(n = 2) {
 }
 
 async function startMatch(opts) {
+  commentaryVoice.unlock();
   if (engine) engine.stop();
   const canvas = $('game-canvas');
   const loadMsg = $('match-load-msg');
@@ -101,10 +109,14 @@ async function startMatch(opts) {
     bindEngine(engine);
     engine.resize();
     await waitFrames(1);
+    commentaryVoice.init();
     engine.start();
     Audio.init();
-    commentaryVoice.init();
     syncVoiceToggleUI();
+    setTimeout(() => {
+      const line = $('commentary-text')?.textContent;
+      if (line) commentaryVoice.repeat(line);
+    }, 350);
 
     clearInterval(hudTimer);
     hudTimer = setInterval(() => {
@@ -169,6 +181,7 @@ function bindClick(id, fn) {
 }
 
 bindClick('btn-career', () => {
+  commentaryVoice.unlock();
   if (!career.squad?.length) career = defaultCareer();
   saveCareer(career);
   initMgmt();
@@ -179,9 +192,9 @@ bindClick('btn-career', () => {
 });
 
 bindClick('btn-quick', () => {
+  commentaryVoice.unlock();
   quickMode = true;
   currentFixture = null;
-  commentaryVoice.init();
   startMatch({ opponent: 'City FC', squad: career.squad.filter(p => p.starter).slice(0, 7) });
 });
 
@@ -195,17 +208,21 @@ bindClick('btn-close-controls', () => {
 });
 
 bindClick('btn-voice-toggle', () => {
+  commentaryVoice.unlock();
   commentaryVoice.init();
-  commentaryVoice.toggle();
+  const on = commentaryVoice.toggle();
   syncVoiceToggleUI();
+  if (on) commentaryVoice.speak('Voice commentary is on.', { priority: 'high' });
 });
 
 bindClick('btn-voice-setting', () => {
+  commentaryVoice.unlock();
   commentaryVoice.init();
-  commentaryVoice.toggle();
+  const on = commentaryVoice.toggle();
   syncVoiceToggleUI();
   const el = $('voice-setting-label');
-  if (el) el.textContent = commentaryVoice.isEnabled() ? 'Voice commentary: On' : 'Voice commentary: Off';
+  if (el) el.textContent = on ? 'Voice commentary: On' : 'Voice commentary: Off';
+  if (on) commentaryVoice.speak('Voice commentary is on.', { priority: 'high' });
 });
 
 bindClick('btn-pause', () => {
