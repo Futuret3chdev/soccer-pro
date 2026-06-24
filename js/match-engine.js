@@ -52,9 +52,12 @@ export class MatchEngine {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0a1628);
-    this.scene.fog = new THREE.Fog(0x0a1628, 100, 260);
+    this.scene.fog = new THREE.Fog(0x0a1628, 48, 130);
 
-    this.camera = new THREE.PerspectiveCamera(42, 1, 0.5, 300);
+    this.camera = new THREE.PerspectiveCamera(44, 1, 0.5, 200);
+    this._camLook = new THREE.Vector3(0, 1, 0);
+    this._camPos = new THREE.Vector3(0, 20, 40);
+    this.cinematic = { active: false, t: 0, duration: 7.2 };
     this.loader = new THREE.TextureLoader();
     this.stadium = new Stadium(this.scene, this.loader, {
       homeColor: this.homeColor,
@@ -87,9 +90,8 @@ export class MatchEngine {
     this._resizeObserver = new ResizeObserver(() => this.resize());
     if (canvas.parentElement) this._resizeObserver.observe(canvas.parentElement);
     window.addEventListener('resize', () => this.resize());
-    this.camera.position.set(20, 16, 28);
-    this.camera.lookAt(0, 1, 0);
-    this._updateCamera(1);
+    this.camera.position.set(0, 28, 55);
+    this.camera.lookAt(0, 0, 0);
   }
 
   resize() {
@@ -152,6 +154,7 @@ export class MatchEngine {
     const x = (slot.x - 0.5) * PITCH_L;
     const z = (slot.z - 0.5) * PITCH_W;
     mesh.position.set(x, 0, z);
+    mesh.scale.setScalar(1.32);
     if (!isHome) mesh.rotation.y = Math.PI;
     this.scene.add(mesh);
 
@@ -212,6 +215,9 @@ export class MatchEngine {
     CrowdAudio.init();
     CrowdAudio.startAmbient();
     this._crowdWasWaving = false;
+    this.cinematic = { active: true, t: 0, duration: 7.2 };
+    this._camPos.set(0, 28, 55);
+    this._camLook.set(0, 0, 0);
     Audio.whistle();
     const groups = this.stadium.crowd?.getState()?.fanGroups;
     if (groups) this.commentary.setContext({ fanGroups: groups });
@@ -245,6 +251,19 @@ export class MatchEngine {
   }
 
   _update(dt) {
+    if (this.cinematic.active) {
+      this.cinematic.t += dt;
+      this._updateCinematicCamera(dt);
+      if (this.stadium.crowd) {
+        const wasWave = this._crowdWasWaving;
+        this.stadium.crowd.update(dt);
+        if (this.stadium.crowd.wave.active && !wasWave) CrowdAudio.reactWave();
+        this._crowdWasWaving = this.stadium.crowd.wave.active;
+        CrowdAudio.tick(dt, this.stadium.crowd.excitement);
+      }
+      return;
+    }
+
     this.timeLeft -= dt;
     if (this.timeLeft <= 0) {
       if (this.half === 1) {
@@ -286,7 +305,7 @@ export class MatchEngine {
 
     if (this.setPiece) {
       this._updateSetPiece(dt);
-      this._updateCamera(dt);
+      this._updateGameplayCamera(dt);
       return;
     }
 
@@ -319,7 +338,7 @@ export class MatchEngine {
     this.entities.forEach(e => this._updateEntity(e, dt, controlled));
     this._updateBall(dt);
     this._checkGoals();
-    this._updateCamera(dt);
+    this._updateGameplayCamera(dt);
   }
 
   _updateEntity(e, dt, controlled) {
@@ -390,7 +409,7 @@ export class MatchEngine {
       e.vel.copy(form.multiplyScalar(e.speed * 0.45));
     }
 
-    if (dist < 1.1 && !this.ball.owner && this.ball.vel.length() < 3) {
+    if (dist < 1.35 && !this.ball.owner && this.ball.vel.length() < 3) {
       this.ball.owner = e;
     }
   }
@@ -451,7 +470,7 @@ export class MatchEngine {
 
     this.entities.forEach(e => {
       const d = e.mesh.position.distanceTo(b.mesh.position);
-      if (d < 0.9 && b.vel.length() < 8) {
+      if (d < 1.15 && b.vel.length() < 8) {
         b.owner = e;
       }
     });
@@ -570,16 +589,119 @@ export class MatchEngine {
     });
   }
 
-  _updateCamera(dt) {
-    const target = this.ball.mesh.position.clone();
-    const side = target.x > 0 ? -1 : 1;
-    const ideal = new THREE.Vector3(
-      target.x + side * 22,
-      12,
-      target.z * 0.3 + 18
-    );
-    this.camera.position.lerp(ideal, dt * 3);
-    this.camera.lookAt(target.x, 1.2, target.z);
+  _getFocusPoint() {
+    const controlled = this.entities.find(e => e.controlled);
+    const ball = this.ball.mesh.position;
+    if (!controlled) return { focus: ball.clone(), lead: new THREE.Vector3() };
+    const fp = controlled.mesh.position.clone().lerp(ball, 0.3);
+    const lead = controlled.vel.length() > 0.4
+      ? controlled.vel.clone().normalize().multiplyScalar(2.5)
+      : new THREE.Vector3();
+    return { focus: fp, lead };
+  }
+
+  _gameplayCameraTarget() {
+    const { focus, lead } = this._getFocusPoint();
+    const side = focus.x >= 0 ? -1 : 1;
+    return {
+      pos: new THREE.Vector3(
+        focus.x + side * 9.5 + lead.x,
+        5.2,
+        focus.z * 0.15 + 6.5 + lead.z
+      ),
+      look: new THREE.Vector3(focus.x + lead.x * 0.4, 1.45, focus.z + lead.z * 0.4),
+      fov: 42
+    };
+  }
+
+  _getCinematicShot(t) {
+    const u = t / this.cinematic.duration;
+    const angle = t * 0.5;
+    const controlled = this.entities.find(e => e.controlled)
+      || this.entities.find(e => e.isHome && !e.isGK) || this.entities[0];
+    const striker = this.entities.find(e => e.isHome && !e.isGK && e !== controlled) || controlled;
+    const ball = this.ball.mesh.position;
+
+    if (u < 0.2) {
+      const r = 62;
+      return {
+        pos: new THREE.Vector3(Math.cos(angle) * r, 30, Math.sin(angle) * r * 0.62),
+        look: new THREE.Vector3(0, 0, 0),
+        fov: 54
+      };
+    }
+    if (u < 0.38) {
+      const r = 36;
+      return {
+        pos: new THREE.Vector3(Math.cos(angle + 1.4) * r, 13, Math.sin(angle + 1.4) * r * 0.72 + 6),
+        look: new THREE.Vector3(ball.x, 1, ball.z),
+        fov: 48
+      };
+    }
+    if (u < 0.52) {
+      const p = controlled.mesh.position;
+      const yaw = controlled.mesh.rotation.y;
+      return {
+        pos: new THREE.Vector3(p.x - Math.sin(yaw) * 4.5, 2.2, p.z - Math.cos(yaw) * 4.5 + 3.5),
+        look: new THREE.Vector3(p.x, 1.55, p.z),
+        fov: 36
+      };
+    }
+    if (u < 0.66) {
+      const p = striker.mesh.position;
+      return {
+        pos: new THREE.Vector3(p.x + 3.5, 2.4, p.z + 3.8),
+        look: new THREE.Vector3(p.x, 1.6, p.z),
+        fov: 34
+      };
+    }
+    if (u < 0.8) {
+      return {
+        pos: new THREE.Vector3(-16, 4.2, 10),
+        look: new THREE.Vector3(PITCH_L / 2 - 12, 1.2, 0),
+        fov: 46
+      };
+    }
+    if (u < 0.92) {
+      const r = 28;
+      return {
+        pos: new THREE.Vector3(Math.cos(angle + 3) * r, 8, Math.sin(angle + 3) * r * 0.5),
+        look: new THREE.Vector3(0, 1, 0),
+        fov: 44
+      };
+    }
+    const gp = this._gameplayCameraTarget();
+    const blend = (u - 0.92) / 0.08;
+    return {
+      pos: new THREE.Vector3(0, 14, 22).lerp(gp.pos, blend),
+      look: new THREE.Vector3(0, 1, 0).lerp(gp.look, blend),
+      fov: THREE.MathUtils.lerp(46, gp.fov, blend)
+    };
+  }
+
+  _updateCinematicCamera(dt) {
+    const shot = this._getCinematicShot(this.cinematic.t);
+    const ease = 1 - Math.exp(-4.5 * dt);
+    this._camPos.lerp(shot.pos, ease);
+    this._camLook.lerp(shot.look, ease);
+    this.camera.position.copy(this._camPos);
+    this.camera.lookAt(this._camLook);
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, shot.fov, dt * 4);
+    this.camera.updateProjectionMatrix();
+    if (this.cinematic.t >= this.cinematic.duration) {
+      this.cinematic.active = false;
+    }
+  }
+
+  _updateGameplayCamera(dt) {
+    const gp = this._gameplayCameraTarget();
+    const ease = 1 - Math.exp(-5 * dt);
+    this._camPos.lerp(gp.pos, ease);
+    this._camLook.lerp(gp.look, ease);
+    this.camera.position.copy(this._camPos);
+    this.camera.lookAt(this._camLook);
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, gp.fov, dt * 3);
+    this.camera.updateProjectionMatrix();
   }
 
   _render() {

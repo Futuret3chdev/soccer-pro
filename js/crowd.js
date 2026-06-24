@@ -177,14 +177,12 @@ export class CrowdSystem {
     };
 
     [-1, 1].forEach((side) => {
-      const z = side * (PITCH_W / 2 + 14);
-      addScreen(PITCH_L + 32, 16, 0, 8, z, side > 0 ? Math.PI : 0);
-      addScreen(PITCH_L + 32, 12, 0, 14, z + side * 2, side > 0 ? Math.PI : 0);
+      const z = side * (PITCH_W / 2 + 24);
+      addScreen(PITCH_L + 24, 12, 0, 10, z, side > 0 ? Math.PI : 0);
     });
     [-1, 1].forEach((side) => {
-      const x = side * (PITCH_L / 2 + 14);
-      addScreen(PITCH_W + 26, 16, x, 8, 0, side > 0 ? -Math.PI / 2 : Math.PI / 2);
-      addScreen(PITCH_W + 26, 12, x, 14, side * 2, side > 0 ? -Math.PI / 2 : Math.PI / 2);
+      const x = side * (PITCH_L / 2 + 24);
+      addScreen(PITCH_W + 20, 12, x, 10, 0, side > 0 ? -Math.PI / 2 : Math.PI / 2);
     });
   }
 
@@ -199,8 +197,8 @@ export class CrowdSystem {
     const scarfMat = new THREE.MeshStandardMaterial({ roughness: 0.7, emissiveIntensity: 0.12 });
 
     const rings = [
-      { tiers: 6, perTier: 80, a: PITCH_L / 2 + 7, b: PITCH_W / 2 + 6, y0: 1.2, yStep: 1.75, tierMul: 0.1 },
-      { tiers: 5, perTier: 64, a: PITCH_L / 2 + 15, b: PITCH_W / 2 + 12, y0: 9, yStep: 2, tierMul: 0.09 }
+      { tiers: 5, perTier: 72, a: PITCH_L / 2 + 14, b: PITCH_W / 2 + 11, y0: 2, yStep: 1.6, tierMul: 0.08 },
+      { tiers: 4, perTier: 56, a: PITCH_L / 2 + 26, b: PITCH_W / 2 + 20, y0: 11, yStep: 1.9, tierMul: 0.07 }
     ];
     const count = rings.reduce((s, r) => s + r.tiers * r.perTier, 0);
 

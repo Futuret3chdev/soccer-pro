@@ -125,10 +125,10 @@ export class Stadium {
     const railMat = new THREE.MeshStandardMaterial({ color: 0x8899aa, roughness: 0.4, metalness: 0.5 });
 
     // Oval bowl tiers wrapping the pitch
-    const tiers = 5;
+    const tiers = 4;
     for (let t = 0; t < tiers; t++) {
-      const rx = PITCH_L / 2 + 14 + t * 3.2;
-      const rz = PITCH_W / 2 + 11 + t * 2.6;
+      const rx = PITCH_L / 2 + 20 + t * 4;
+      const rz = PITCH_W / 2 + 16 + t * 3.2;
       const y = 0.8 + t * 2;
       const curve = new THREE.EllipseCurve(0, 0, rx, rz, 0, Math.PI * 2, false, 0);
       const pts = curve.getPoints(72).map(p => new THREE.Vector3(p.x, y, p.y));
