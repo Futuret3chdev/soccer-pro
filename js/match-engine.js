@@ -100,6 +100,7 @@ export class MatchEngine {
     this.passTarget = null;
 
     this._spawnTeams();
+    this._createControlRing();
     this._lastW = 0;
     this._lastH = 0;
     this._resizeObserver = new ResizeObserver(() => this.resize());
@@ -275,6 +276,77 @@ export class MatchEngine {
     });
     player.controlled = true;
     this.controlledIdx = this.entities.indexOf(player);
+    this._snapControlRing(player);
+  }
+
+  _createControlRing() {
+    const group = new THREE.Group();
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x3dff6e,
+      transparent: true,
+      opacity: 0.9,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const glowMat = ringMat.clone();
+    glowMat.opacity = 0.32;
+
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.68, 40), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.07;
+    ring.renderOrder = 10;
+
+    const glow = new THREE.Mesh(new THREE.RingGeometry(0.68, 0.9, 40), glowMat);
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.y = 0.065;
+    glow.renderOrder = 9;
+
+    const arrow = new THREE.Mesh(
+      new THREE.ConeGeometry(0.12, 0.22, 4),
+      new THREE.MeshBasicMaterial({ color: 0x3dff6e, transparent: true, opacity: 0.75, depthWrite: false })
+    );
+    arrow.rotation.x = Math.PI / 2;
+    arrow.position.set(0, 0.08, -0.55);
+    arrow.renderOrder = 11;
+
+    group.add(glow, ring, arrow);
+    group.visible = false;
+    this.scene.add(group);
+    this.controlRing = { group, ring, glow, arrow, pulse: 0 };
+    const ctrl = this.entities.find(e => e.controlled);
+    if (ctrl) this._snapControlRing(ctrl);
+  }
+
+  _snapControlRing(player) {
+    if (!this.controlRing || !player) return;
+    const p = player.mesh.position;
+    this.controlRing.group.position.set(p.x, 0, p.z);
+    this.controlRing.group.rotation.y = player.mesh.rotation.y;
+    this.controlRing.group.visible = !this.cinematic.active;
+  }
+
+  _updateControlRing(dt) {
+    if (!this.controlRing) return;
+    const player = this.entities.find(e => e.controlled);
+    if (!player || this.cinematic.active) {
+      this.controlRing.group.visible = false;
+      return;
+    }
+
+    const p = player.mesh.position;
+    this.controlRing.group.visible = true;
+    this.controlRing.group.position.lerp(
+      new THREE.Vector3(p.x, 0, p.z),
+      1 - Math.exp(-18 * dt)
+    );
+    const targetYaw = player.mesh.rotation.y;
+    this.controlRing.group.rotation.y = lerpAngle(this.controlRing.group.rotation.y, targetYaw, 1 - Math.exp(-12 * dt));
+
+    this.controlRing.pulse += dt * 3.2;
+    const pulse = 1 + Math.sin(this.controlRing.pulse) * 0.07;
+    this.controlRing.ring.scale.set(pulse, pulse, 1);
+    this.controlRing.glow.scale.set(pulse * 1.04, pulse * 1.04, 1);
+    this.controlRing.ring.material.opacity = 0.78 + Math.sin(this.controlRing.pulse * 1.4) * 0.12;
   }
 
   _nearestHomeToBall(maxDist = Infinity) {
@@ -530,6 +602,7 @@ export class MatchEngine {
 
     this.entities.forEach(e => this._updateEntity(e, dt, controlled));
     this._updateBall(dt);
+    this._updateControlRing(dt);
     this._updateGameplayCamera(dt);
   }
 
