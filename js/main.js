@@ -113,10 +113,6 @@ async function startMatch(opts) {
     engine.start();
     Audio.init();
     syncVoiceToggleUI();
-    setTimeout(() => {
-      const line = $('commentary-text')?.textContent;
-      if (line) commentaryVoice.repeat(line);
-    }, 350);
 
     clearInterval(hudTimer);
     hudTimer = setInterval(() => {

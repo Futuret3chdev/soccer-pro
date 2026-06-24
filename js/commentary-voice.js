@@ -2,13 +2,34 @@ import { CrowdAudio } from './crowd-audio.js';
 
 const STORAGE_KEY = 'soccer-pro-voice';
 
+const NOVELTY = /whisper|bells|zarvox|bahh|boing|bubbles|cellos|deranged|jester|organ|superstar|trinoids|wobble|albert|bad news|good news|hysterical/i;
+
 function pickVoice(voices) {
-  const en = voices.filter(v => /^en(-|$)/i.test(v.lang));
-  const maleish = v => /male|daniel|james|aaron|fred|oliver|arthur|gordon|lee/i.test(v.name)
-    && !/female|samantha|karen|victoria|zira/i.test(v.name);
-  const gb = en.filter(v => /^en-GB/i.test(v.lang));
-  const us = en.filter(v => /^en-US/i.test(v.lang));
-  return gb.find(maleish) || us.find(maleish) || gb[0] || us[0] || en[0] || null;
+  const en = voices.filter(v => /^en(-|$)/i.test(v.lang) && !NOVELTY.test(v.name));
+  const local = en.filter(v => v.localService);
+  const pool = local.length ? local : en;
+  const gb = pool.filter(v => /^en-GB/i.test(v.lang));
+  const us = pool.filter(v => /^en-US/i.test(v.lang));
+
+  const rank = (list) => {
+    const order = [
+      v => /Daniel/i.test(v.name) && /^en-GB/i.test(v.lang),
+      v => /Google UK English Male/i.test(v.name),
+      v => /Microsoft.*George/i.test(v.name),
+      v => /Google US English/i.test(v.name) && /male/i.test(v.name),
+      v => /Alex/i.test(v.name),
+      v => /Fred/i.test(v.name),
+      v => /male/i.test(v.name) && !/female/i.test(v.name),
+      () => true
+    ];
+    for (const test of order) {
+      const hit = list.find(test);
+      if (hit) return hit;
+    }
+    return null;
+  };
+
+  return rank(gb) || rank(us) || pool[0] || en[0] || null;
 }
 
 export class CommentaryVoice {
@@ -21,6 +42,8 @@ export class CommentaryVoice {
     this._voicesBound = false;
     this._unlocked = false;
     this._keepAlive = null;
+    this._lastText = '';
+    this._lastSpokeAt = 0;
   }
 
   init() {
@@ -55,6 +78,7 @@ export class CommentaryVoice {
   }
 
   _selectVoice() {
+    if (this.speaking || window.speechSynthesis?.speaking) return;
     const voices = window.speechSynthesis.getVoices();
     if (!voices.length) return;
     this.voice = pickVoice(voices);
@@ -64,8 +88,8 @@ export class CommentaryVoice {
     if (this._keepAlive) return;
     this._keepAlive = setInterval(() => {
       const synth = window.speechSynthesis;
-      if (synth.speaking || synth.pending) synth.resume();
-    }, 3000);
+      if (synth.speaking && synth.paused) synth.resume();
+    }, 8000);
   }
 
   isEnabled() {
@@ -99,7 +123,12 @@ export class CommentaryVoice {
     if (!this.isEnabled() || !text) return;
     this._selectVoice();
 
+    const now = Date.now();
+    const dup = text === this._lastText && now - this._lastSpokeAt < 4000;
+    if (dup && priority !== 'high') return;
+
     if (priority === 'high') {
+      if (dup && (this.speaking || window.speechSynthesis.speaking)) return;
       this._cancelThen(() => this._utter(text));
       return;
     }
@@ -107,7 +136,7 @@ export class CommentaryVoice {
     if (priority === 'low' && (this.speaking || this.queue.length)) return;
 
     if (this.speaking || window.speechSynthesis.speaking) {
-      if (this.queue.length < 3) this.queue.push(text);
+      if (this.queue.length < 3 && !this.queue.includes(text)) this.queue.push(text);
       return;
     }
 
@@ -128,11 +157,14 @@ export class CommentaryVoice {
 
     const synth = window.speechSynthesis;
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = 1;
-    u.pitch = 1;
+    u.rate = 1.04;
+    u.pitch = 0.98;
     u.volume = 1;
-    u.lang = 'en-GB';
+    u.lang = this.voice?.lang || 'en-GB';
     if (this.voice) u.voice = this.voice;
+
+    this._lastText = text;
+    this._lastSpokeAt = Date.now();
 
     u.onstart = () => {
       this.speaking = true;
