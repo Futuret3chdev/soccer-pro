@@ -4,9 +4,9 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { createHumanoid, animateHumanoid, skinColor } from './models.js';
 
 const TARGET_HEIGHT = 1.82;
+const STAND_RUN_PHASE = 0.38;
 const ASSETS = {
   fieldRun: '/assets/players/field-run.glb',
-
   goalkeeper: '/assets/players/goalkeeper.glb'
 };
 
@@ -184,6 +184,18 @@ function applyPlayerLook(root, opts) {
   root.userData.appearance = { number, variant, skinTone, hairColor, height };
 }
 
+function standTimeFor(clip) {
+  return clip ? clip.duration * STAND_RUN_PHASE : 0;
+}
+
+function applyStandPose(runAction, standTime) {
+  if (!runAction) return;
+  runAction.setEffectiveWeight(1);
+  runAction.setEffectiveTimeScale(0);
+  runAction.time = standTime;
+  if (!runAction.isRunning()) runAction.play();
+}
+
 export async function preloadPlayerModels() {
   if (library) return library;
   try {
@@ -199,14 +211,17 @@ export async function preloadPlayerModels() {
     fieldScene.userData._baseHeight = TARGET_HEIGHT;
     gkScene.userData._baseHeight = TARGET_HEIGHT;
 
+    const runClip = pickClip(fieldRun.animations, 'run', 'mplayer');
+
     library = {
       useGltf: true,
       fieldScene,
       gkScene,
       clips: {
-        run: pickClip(fieldRun.animations, 'run', 'mplayer'),
+        run: runClip,
         gkIdle: pickClip(gk.animations, 'idle', 'breathing', 'goalkeeper')
-      }
+      },
+      standTime: standTimeFor(runClip)
     };
   } catch (err) {
     console.warn('GLTF player models failed to load, using procedural fallback:', err);
@@ -248,6 +263,7 @@ export function createPlayer(opts = {}) {
 
   const mixer = new THREE.AnimationMixer(root);
   const actions = {};
+  const standTime = lib.standTime || 0;
 
   if (isGK && lib.clips.gkIdle) {
     actions.idle = mixer.clipAction(lib.clips.gkIdle);
@@ -258,15 +274,19 @@ export function createPlayer(opts = {}) {
     actions.run.loop = THREE.LoopRepeat;
     actions.run.clampWhenFinished = false;
     actions.run.play();
-    actions.run.setEffectiveTimeScale(0);
-    actions.run.setEffectiveWeight(0);
-
+    applyStandPose(actions.run, standTime);
   }
+
+  mixer.update(0);
+  root.updateMatrixWorld(true);
+  const poseBox = new THREE.Box3().setFromObject(root);
+  root.userData.groundOffset = -poseBox.min.y;
 
   root.userData = {
     isGltf: true,
     mixer,
     actions,
+    standTime,
     kickTimer: 0,
     slideBlend: 0,
     groundOffset: root.userData.groundOffset || 0,
@@ -292,7 +312,6 @@ export function animatePlayer(mesh, speed, kicking = false, dt = 0.016, sliding 
 
   if (d.mixer) {
     const kickingNow = d.kickTimer > 0;
-
     if (kicking && d.kickTimer <= 0) d.kickTimer = 0.55;
 
     if (d.actions?.idle) {
@@ -303,26 +322,30 @@ export function animatePlayer(mesh, speed, kicking = false, dt = 0.016, sliding 
       if (!d.locomotion && speed > startMove && d.slideBlend < 0.12) d.locomotion = true;
       else if (d.locomotion && speed < stopMove) d.locomotion = false;
 
-      if (d.locomotion && !kickingNow) {
+      const run = d.actions.run;
+      run.setEffectiveWeight(1);
+
+      if (d.locomotion && !kickingNow && d.slideBlend < 0.2) {
         const pace = THREE.MathUtils.lerp(0.95, 1.25, Math.min(speed / 6.5, 1));
-        d.actions.run.setEffectiveTimeScale(pace);
-        d.actions.run.setEffectiveWeight(1);
+        run.setEffectiveTimeScale(pace);
       } else if (kickingNow) {
-        d.actions.run.setEffectiveTimeScale(0);
-        d.actions.run.setEffectiveWeight(0.4);
+        run.setEffectiveTimeScale(1.6);
+        run.time = THREE.MathUtils.lerp(
+          run.time,
+          d.standTime + run.getClip().duration * 0.1,
+          1 - Math.exp(-10 * dt)
+        );
       } else {
-        d.actions.run.setEffectiveTimeScale(0);
-        d.actions.run.setEffectiveWeight(0);
+        run.setEffectiveTimeScale(0);
+        run.time = THREE.MathUtils.lerp(run.time, d.standTime, 1 - Math.exp(-10 * dt));
       }
-      if (!d.actions.run.isRunning()) d.actions.run.play();
+
+      if (!run.isRunning()) run.play();
     }
 
     d.mixer.update(dt);
     mesh.traverse((o) => {
-      if (o.isSkinnedMesh) {
-        o.computeBoundingSphere();
-        o.computeBoundingBox();
-      }
+      if (o.isSkinnedMesh) o.computeBoundingSphere();
     });
   }
 
