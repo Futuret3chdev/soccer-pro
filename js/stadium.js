@@ -1,8 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { CrowdSystem } from './crowd.js';
-
-const PITCH_W = 68;
-const PITCH_L = 105;
+import { PITCH_W, PITCH_L, standRailY, standTierRadii, STAND_TIER_COUNT } from './stands.js';
 
 export { PITCH_W, PITCH_L };
 
@@ -265,11 +263,9 @@ export class Stadium {
     const seatColors = [0x2e3d52, 0x354658, 0x3a4d64, 0x2a3848];
     const railMat = new THREE.MeshStandardMaterial({ color: 0xaabbcc, roughness: 0.35, metalness: 0.55 });
 
-    const tiers = 5;
-    for (let t = 0; t < tiers; t++) {
-      const rx = PITCH_L / 2 + 18 + t * 4.5;
-      const rz = PITCH_W / 2 + 14 + t * 3.6;
-      const y = 1 + t * 2.2;
+    for (let t = 0; t < STAND_TIER_COUNT; t++) {
+      const { rx, rz } = standTierRadii(t);
+      const y = standRailY(t);
       const curve = new THREE.EllipseCurve(0, 0, rx, rz, 0, Math.PI * 2, false, 0);
       const pts = curve.getPoints(80).map(p => new THREE.Vector3(p.x, y, p.y));
       pts.push(pts[0].clone());

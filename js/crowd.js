@@ -1,15 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+import { PITCH_W, PITCH_L, standDeckTop, standTierRadii, STAND_TIER_COUNT } from './stands.js';
 
-const PITCH_W = 68;
-const PITCH_L = 105;
-
-function standDeckTop(tier) {
-  return 1 + tier * 2.2 - 0.35 + 0.275;
-}
-
-function fanSeatY(tier) {
-  return standDeckTop(tier) + 0.38;
-}
+const FAN_BODY_HALF = 0.34;
 
 const PERSONALITY = {
   DIEHARD: 'diehard',
@@ -186,29 +178,26 @@ export class CrowdSystem {
 
     [-1, 1].forEach((side) => {
       const z = side * (PITCH_W / 2 + 24);
-      addScreen(PITCH_L + 24, 12, 0, 10, z, side > 0 ? Math.PI : 0);
+      addScreen(PITCH_L + 24, 10, 0, standDeckTop(3) + 1.8, z, side > 0 ? Math.PI : 0);
     });
     [-1, 1].forEach((side) => {
       const x = side * (PITCH_L / 2 + 24);
-      addScreen(PITCH_W + 20, 12, x, 10, 0, side > 0 ? -Math.PI / 2 : Math.PI / 2);
+      addScreen(PITCH_W + 20, 10, x, standDeckTop(3) + 1.8, 0, side > 0 ? -Math.PI / 2 : Math.PI / 2);
     });
   }
 
   _buildOvalCrowd() {
-    const bodyGeo = new THREE.BoxGeometry(0.44, 0.82, 0.3);
-    const headGeo = new THREE.SphereGeometry(0.18, 8, 6);
-    const armGeo = new THREE.BoxGeometry(0.12, 0.42, 0.12);
-    const scarfGeo = new THREE.BoxGeometry(0.5, 0.08, 0.06);
-    const bodyMat = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0.04 });
-    const headMat = new THREE.MeshStandardMaterial({ color: 0xd9a87c, roughness: 0.88 });
-    const armMat = new THREE.MeshStandardMaterial({ roughness: 0.82 });
-    const scarfMat = new THREE.MeshStandardMaterial({ roughness: 0.7, emissiveIntensity: 0.12 });
+    const bodyGeo = new THREE.CapsuleGeometry(0.12, 0.4, 5, 10);
+    const headGeo = new THREE.SphereGeometry(0.11, 10, 8);
+    const armGeo = new THREE.CapsuleGeometry(0.04, 0.22, 4, 6);
+    const scarfGeo = new THREE.BoxGeometry(0.42, 0.06, 0.05);
+    const bodyMat = new THREE.MeshStandardMaterial({ roughness: 0.72, metalness: 0.04 });
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xd9a87c, roughness: 0.86 });
+    const armMat = new THREE.MeshStandardMaterial({ roughness: 0.8 });
+    const scarfMat = new THREE.MeshStandardMaterial({ roughness: 0.68, emissiveIntensity: 0.1 });
 
-    const rings = [
-      { tiers: 5, perTier: 64, a: PITCH_L / 2 + 17, b: PITCH_W / 2 + 13, yForTier: fanSeatY, tierMul: 0.03 },
-      { tiers: 3, perTier: 48, a: PITCH_L / 2 + 26, b: PITCH_W / 2 + 21, yForTier: (t) => fanSeatY(Math.min(4, t + 2)), tierMul: 0.025 }
-    ];
-    const count = rings.reduce((s, r) => s + r.tiers * r.perTier, 0);
+    const perTier = 52;
+    const count = STAND_TIER_COUNT * perTier;
 
     this.bodies = new THREE.InstancedMesh(bodyGeo, bodyMat, count);
     this.heads = new THREE.InstancedMesh(headGeo, headMat, count);
@@ -222,41 +211,40 @@ export class CrowdSystem {
     this.scarves.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
 
     let idx = 0;
-    rings.forEach((ring) => {
-      for (let tier = 0; tier < ring.tiers; tier++) {
-        for (let i = 0; i < ring.perTier; i++) {
-          const theta = (i / ring.perTier) * Math.PI * 2 + tier * 0.07;
-          const tierMul = 1 + tier * ring.tierMul;
-          const x = Math.cos(theta) * ring.a * tierMul;
-          const z = Math.sin(theta) * ring.b * tierMul;
-          const y = ring.yForTier(tier);
-          const side = fanSide(theta);
-          const personality = pickPersonality(side);
-          const color = shirtColor(personality, this.homeColor, this.awayColor);
+    for (let tier = 0; tier < STAND_TIER_COUNT; tier++) {
+      const { rx, rz } = standTierRadii(tier);
+      const feetY = standDeckTop(tier);
+      for (let i = 0; i < perTier; i++) {
+        const theta = (i / perTier) * Math.PI * 2 + tier * 0.08;
+        const inset = 0.96 - tier * 0.008;
+        const x = Math.cos(theta) * rx * inset;
+        const z = Math.sin(theta) * rz * inset;
+        const side = fanSide(theta);
+        const personality = pickPersonality(side);
+        const color = shirtColor(personality, this.homeColor, this.awayColor);
 
-          this.fans.push({
-            idx,
-            theta,
-            tier,
-            x,
-            z,
-            baseY: y,
-            side,
-            personality,
-            phase: Math.random() * Math.PI * 2,
-            phase2: Math.random() * Math.PI * 2,
-            stand: 0,
-            cheer: 0,
-            color,
-            scale: 0.95 + Math.random() * 0.15
-          });
+        this.fans.push({
+          idx,
+          theta,
+          tier,
+          x,
+          z,
+          feetY,
+          side,
+          personality,
+          phase: Math.random() * Math.PI * 2,
+          phase2: Math.random() * Math.PI * 2,
+          stand: 0,
+          cheer: 0,
+          color,
+          scale: 0.92 + Math.random() * 0.12
+        });
 
-          this.bodies.setColorAt(idx, color);
-          this.scarves.setColorAt(idx, color);
-          idx++;
-        }
+        this.bodies.setColorAt(idx, color);
+        this.scarves.setColorAt(idx, color);
+        idx++;
       }
-    });
+    }
 
     this.bodies.count = count;
     this.heads.count = count;
@@ -291,8 +279,8 @@ export class CrowdSystem {
       flag.position.set(0.28, 0.35, 0);
       const grp = new THREE.Group();
       grp.add(pole, flag);
-      grp.position.set(fan.x, fan.baseY + 0.2, fan.z);
-      grp.lookAt(0, fan.baseY, 0);
+      grp.position.set(fan.x, fan.feetY + 0.42, fan.z);
+      grp.lookAt(0, fan.feetY + 0.2, 0);
       this.group.add(grp);
       this.flags.push({
         grp,
@@ -313,15 +301,12 @@ export class CrowdSystem {
       { theta: Math.PI - 0.35, tier: 2 },
       { theta: Math.PI + 0.7, tier: 0 }
     ];
-    const a = PITCH_L / 2 + 11;
-    const b = PITCH_W / 2 + 9;
-
     names.forEach((name, i) => {
       const spot = spots[i % spots.length];
-      const tierMul = 1 + spot.tier * 0.14;
-      const x = Math.cos(spot.theta) * a * tierMul;
-      const z = Math.sin(spot.theta) * b * tierMul;
-      const y = standDeckTop(spot.tier) + 1.1;
+      const { rx, rz } = standTierRadii(spot.tier);
+      const x = Math.cos(spot.theta) * rx * 0.93;
+      const z = Math.sin(spot.theta) * rz * 0.93;
+      const y = standDeckTop(spot.tier) + 1.05;
       const tex = makeBannerTexture(name, `#${this.homeColor.getHexString()}`);
       const mat = new THREE.MeshStandardMaterial({
         map: tex,
@@ -361,7 +346,7 @@ export class CrowdSystem {
       smoke.position.y = 0.5;
       const grp = new THREE.Group();
       grp.add(core, smoke);
-      grp.position.set(fan.x, fan.baseY + 0.5, fan.z);
+      grp.position.set(fan.x, fan.feetY + 0.55, fan.z);
       this.group.add(grp);
       this.flares.push({
         grp,
@@ -383,7 +368,7 @@ export class CrowdSystem {
     for (let i = 0; i < n; i++) {
       const f = available[i];
       f.life = f.maxLife = 2.5 + Math.random() * 2;
-      f.grp.position.y = f.fan.baseY + 0.5;
+      f.grp.position.y = f.fan.feetY + 0.55;
     }
   }
 
@@ -448,10 +433,10 @@ export class CrowdSystem {
     fan.cheer = Math.max(0, fan.cheer - dt * 0.35);
 
     const energy = 0.7 + this.excitement * 0.55;
-    const idleBob = Math.sin(t * 2.8 + fan.phase) * 0.05 * energy;
-    const idleSway = Math.sin(t * 1.6 + fan.phase2) * 0.06 * energy;
-    const shuffle = Math.sin(t * 4.2 + fan.phase * 1.7) * 0.04 * energy;
-    const headNod = Math.sin(t * 3.3 + fan.phase) * 0.06;
+    const idleBob = Math.sin(t * 2.8 + fan.phase) * 0.012 * energy;
+    const idleSway = Math.sin(t * 1.6 + fan.phase2) * 0.04 * energy;
+    const shuffle = Math.sin(t * 4.2 + fan.phase * 1.7) * 0.025 * energy;
+    const headNod = Math.sin(t * 3.3 + fan.phase) * 0.02;
 
     let stand = 0;
     if (this.wave.active) {
@@ -468,42 +453,43 @@ export class CrowdSystem {
     stand = Math.max(stand, fan.cheer * 0.85 + rowdyBoost);
     fan.stand = stand;
 
-    const bounce = Math.sin(t * 9 + fan.idx) * stand * 0.03;
     const sc = fan.scale || 1;
-    const scaleY = sc * (0.96 + stand * 0.38 + Math.abs(idleBob) * 0.08);
-    const lift = idleBob + stand * 0.22 + bounce;
+    const scaleY = 0.88 + stand * 0.14;
+    const halfH = FAN_BODY_HALF * scaleY * sc;
     const lean = idleSway + shuffle;
+    const feetY = fan.feetY;
 
     const px = fan.x + Math.cos(fan.theta) * lean;
     const pz = fan.z + Math.sin(fan.theta) * lean;
+    const bodyY = feetY + halfH + idleBob;
 
-    this._dummy.position.set(px, fan.baseY + lift, pz);
+    this._dummy.position.set(px, bodyY, pz);
     this._dummy.scale.set(sc, scaleY, sc);
     this._dummy.rotation.set(0, 0, 0);
-    this._dummy.lookAt(0, fan.baseY - 0.4, 0);
+    this._dummy.lookAt(0, feetY + 0.2, 0);
     const faceY = this._dummy.rotation.y;
-    this._dummy.rotation.set(lean * 0.12, faceY, lean * 0.35);
+    this._dummy.rotation.set(lean * 0.08, faceY, lean * 0.2);
     this._dummy.updateMatrix();
     this.bodies.setMatrixAt(fan.idx, this._dummy.matrix);
 
-    this._dummy.position.set(px, fan.baseY + 0.52 + lift + stand * 0.14 + headNod, pz);
-    this._dummy.scale.set(sc, sc, sc);
-    this._dummy.rotation.set(lean * 0.08, faceY, lean * 0.2);
+    this._dummy.position.set(px, feetY + halfH * 2 + 0.1 * sc + headNod, pz);
+    this._dummy.scale.set(sc * 0.95, sc * 0.95, sc * 0.95);
+    this._dummy.rotation.set(lean * 0.05, faceY, lean * 0.12);
     this._dummy.updateMatrix();
     this.heads.setMatrixAt(fan.idx, this._dummy.matrix);
 
-    const armLift = stand * 1.4 + fan.cheer * 0.8 + Math.sin(t * 5 + fan.phase) * 0.25 * energy;
-    const armSide = fan.idx % 2 === 0 ? 0.22 : -0.22;
-    this._dummy.position.set(px + armSide * sc, fan.baseY + 0.34 + lift + armLift * 0.22, pz);
-    this._dummy.scale.set(sc, sc * (0.85 + armLift * 0.45), sc);
-    this._dummy.rotation.set(armLift * 0.8, faceY, armSide > 0 ? -0.4 : 0.4);
+    const armLift = stand * 0.9 + fan.cheer * 0.5 + Math.sin(t * 5 + fan.phase) * 0.15 * energy;
+    const armSide = fan.idx % 2 === 0 ? 0.18 : -0.18;
+    this._dummy.position.set(px + armSide * sc, bodyY + armLift * 0.08, pz);
+    this._dummy.scale.set(sc, sc * (0.9 + armLift * 0.25), sc);
+    this._dummy.rotation.set(armLift * 0.55, faceY, armSide > 0 ? -0.35 : 0.35);
     this._dummy.updateMatrix();
     this.arms.setMatrixAt(fan.idx, this._dummy.matrix);
     this.arms.setColorAt(fan.idx, fan.color);
 
-    this._dummy.position.set(px, fan.baseY + 0.5 + lift, pz + 0.18);
-    this._dummy.scale.set(sc * 1.1, sc, sc * 0.5);
-    this._dummy.rotation.set(Math.sin(t * 4 + fan.phase) * 0.2, faceY, 0);
+    this._dummy.position.set(px, bodyY + 0.06, pz + 0.14);
+    this._dummy.scale.set(sc, sc, sc * 0.45);
+    this._dummy.rotation.set(Math.sin(t * 4 + fan.phase) * 0.12, faceY, 0);
     this._dummy.updateMatrix();
     this.scarves.setMatrixAt(fan.idx, this._dummy.matrix);
 
@@ -556,7 +542,7 @@ export class CrowdSystem {
       f.smokeMat.opacity = (1 - p) * 0.45;
       f.smoke.position.y = 0.5 + p * 2.2;
       f.smoke.scale.setScalar(1 + p * 1.5);
-      f.grp.position.y = f.fan.baseY + 0.5 + p * 0.6;
+      f.grp.position.y = f.fan.feetY + 0.55 + p * 0.5;
     });
   }
 
