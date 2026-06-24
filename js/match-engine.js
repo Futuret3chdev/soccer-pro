@@ -60,11 +60,11 @@ export class MatchEngine {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.22;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0a1628);
-    this.scene.fog = new THREE.Fog(0x0a1628, 48, 130);
+    this.scene.background = new THREE.Color(0x142238);
+    this.scene.fog = new THREE.Fog(0x142238, 55, 145);
 
     this.camera = new THREE.PerspectiveCamera(44, 1, 0.5, 200);
     this._camLook = new THREE.Vector3(0, 1, 0);
@@ -114,9 +114,49 @@ export class MatchEngine {
     if (this.running) this._render();
   }
 
+  _makeBallTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512;
+    c.height = 256;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 512, 256);
+    const drawHex = (cx, cy, r, fill, stroke) => {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (Math.PI / 3) * i - Math.PI / 6;
+        const x = cx + Math.cos(a) * r;
+        const y = cy + Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+      if (stroke) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    };
+    const patches = [
+      [128, 64, 22, '#1a1a1a'], [256, 64, 22, '#1a1a1a'], [384, 64, 22, '#1a1a1a'],
+      [64, 128, 22, '#1a1a1a'], [192, 128, 22, '#1a1a1a'], [320, 128, 22, '#1a1a1a'], [448, 128, 22, '#1a1a1a'],
+      [128, 192, 22, '#1a1a1a'], [256, 192, 22, '#1a1a1a'], [384, 192, 22, '#1a1a1a']
+    ];
+    patches.forEach(([x, y, r, col]) => drawHex(x, y, r, col, '#333'));
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
   _createBall() {
-    const geo = new THREE.SphereGeometry(0.11, 24, 24);
-    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.05 });
+    const geo = new THREE.SphereGeometry(0.11, 28, 28);
+    const mat = new THREE.MeshStandardMaterial({
+      map: this._makeBallTexture(),
+      roughness: 0.38,
+      metalness: 0.04
+    });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;
     mesh.position.y = 0.11;
@@ -169,7 +209,7 @@ export class MatchEngine {
     const x = (slot.x - 0.5) * PITCH_L;
     const z = (slot.z - 0.5) * PITCH_W;
     mesh.position.set(x, 0, z);
-    mesh.scale.setScalar(1.38);
+    mesh.scale.setScalar(1.42);
     mesh.rotation.y = isHome ? Math.PI / 2 : -Math.PI / 2;
     this.scene.add(mesh);
 
