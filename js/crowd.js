@@ -1,5 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
-import { PITCH_W, PITCH_L, standDeckTop, standTierRadii, STAND_TIER_COUNT } from './stands.js';
+import { PITCH_W, PITCH_L, standDeckTop, standRailY, standTierRadii, STAND_TIER_COUNT } from './stands.js';
+import { makeCrowdPanoramaTexture } from './crowd-textures.js';
 
 const FAN_BODY_HALF = 0.34;
 
@@ -62,48 +63,6 @@ function fanGroupNames(clubName) {
   ];
 }
 
-function makeProceduralCrowdTexture(homeHex, awayHex) {
-  const c = document.createElement('canvas');
-  c.width = 1024;
-  c.height = 512;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#141c28';
-  ctx.fillRect(0, 0, c.width, c.height);
-
-  const home = homeHex;
-  const away = awayHex;
-  const neutrals = ['#4a5568', '#5c6b7a', '#3d4a5c', '#6b7c8f'];
-
-  for (let row = 0; row < 14; row++) {
-    const y = 24 + row * 34;
-    const sway = Math.sin(row * 0.7) * 6;
-    for (let col = 0; col < 36; col++) {
-      const x = 14 + col * 28 + sway;
-      const r = Math.random();
-      const shirt = r < 0.38 ? home : r < 0.58 ? away : neutrals[col % neutrals.length];
-      const h = 18 + Math.random() * 10;
-      const w = 10 + Math.random() * 4;
-      ctx.fillStyle = shirt;
-      ctx.fillRect(x, y + 14, w, h);
-      ctx.fillStyle = '#d4a574';
-      ctx.beginPath();
-      ctx.arc(x + w / 2, y + 10, 5 + Math.random() * 2, 0, Math.PI * 2);
-      ctx.fill();
-      if (Math.random() < 0.22) {
-        ctx.fillStyle = shirt;
-        ctx.fillRect(x - 2, y + 18, w + 4, 4);
-      }
-    }
-  }
-
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(3, 2);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
 function makeBannerTexture(text, bgHex, textHex = '#ffffff') {
   const c = document.createElement('canvas');
   c.width = 512;
@@ -148,42 +107,54 @@ export class CrowdSystem {
     this._color = new THREE.Color();
 
 
-    this._buildBackdropScreens();
+    this._buildStandCrowdPanels();
     this._buildOvalCrowd();
     this._buildFlags();
     this._buildBanners();
     this._buildFlareSlots();
   }
 
-  _buildBackdropScreens() {
-    const tex = makeProceduralCrowdTexture(
-      `#${this.homeColor.getHexString()}`,
-      `#${this.awayColor.getHexString()}`
-    );
-    const mat = new THREE.MeshStandardMaterial({
-      map: tex,
-      roughness: 0.75,
-      emissive: 0x223344,
-      emissiveIntensity: 0.15,
-      side: THREE.FrontSide
-    });
+  _buildStandCrowdPanels() {
+    const homeHex = `#${this.homeColor.getHexString()}`;
+    const awayHex = `#${this.awayColor.getHexString()}`;
+    const texHome = makeCrowdPanoramaTexture(homeHex, awayHex, 'home');
+    const texAway = makeCrowdPanoramaTexture(homeHex, awayHex, 'away');
+    const texMixed = makeCrowdPanoramaTexture(homeHex, awayHex, 'mixed');
 
-    const addScreen = (w, h, x, y, z, rotY) => {
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat.clone());
+    const addPanel = (w, h, x, y, z, rotY, tex, tier, tilt = -0.06) => {
+      const mat = new THREE.MeshStandardMaterial({
+        map: tex,
+        roughness: 0.76,
+        metalness: 0.03,
+        emissive: 0x101820,
+        emissiveIntensity: 0.12 + tier * 0.025
+      });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
       mesh.position.set(x, y, z);
+      mesh.rotation.order = 'YXZ';
       mesh.rotation.y = rotY;
+      mesh.rotation.x = tilt;
       this.group.add(mesh);
-      this.backdrops.push({ mesh, mat: mesh.material, phase: Math.random() * 6 });
+      this.backdrops.push({ mesh, mat, phase: Math.random() * 6, tier });
     };
 
-    [-1, 1].forEach((side) => {
-      const z = side * (PITCH_W / 2 + 24);
-      addScreen(PITCH_L + 24, 10, 0, standDeckTop(3) + 1.8, z, side > 0 ? Math.PI : 0);
-    });
-    [-1, 1].forEach((side) => {
-      const x = side * (PITCH_L / 2 + 24);
-      addScreen(PITCH_W + 20, 10, x, standDeckTop(3) + 1.8, 0, side > 0 ? -Math.PI / 2 : Math.PI / 2);
-    });
+    for (let tier = 0; tier < STAND_TIER_COUNT; tier++) {
+      const { rx, rz } = standTierRadii(tier);
+      const y = standRailY(tier) + 1.4 + tier * 0.35;
+      const h = 5.8 + tier * 1.15;
+      const inset = 0.97 - tier * 0.01;
+
+      addPanel(PITCH_L * 0.54, h, -rx * inset, y, 0, Math.PI / 2, texHome, tier);
+      addPanel(PITCH_L * 0.54, h, rx * inset, y, 0, -Math.PI / 2, texAway, tier);
+      addPanel(PITCH_W * 0.64, h, 0, y, -rz * inset, 0, texMixed, tier);
+      addPanel(PITCH_W * 0.64, h, 0, y, rz * inset, Math.PI, texMixed, tier);
+
+      const corner = h * 0.72;
+      addPanel(corner, corner, -rx * inset * 0.72, y, -rz * inset * 0.72, Math.PI / 4, texMixed, tier, -0.04);
+      addPanel(corner, corner, -rx * inset * 0.72, y, rz * inset * 0.72, -Math.PI / 4, texMixed, tier, -0.04);
+      addPanel(corner, corner, rx * inset * 0.72, y, -rz * inset * 0.72, (3 * Math.PI) / 4, texMixed, tier, -0.04);
+      addPanel(corner, corner, rx * inset * 0.72, y, rz * inset * 0.72, (-3 * Math.PI) / 4, texMixed, tier, -0.04);
+    }
   }
 
   _buildOvalCrowd() {
@@ -196,8 +167,9 @@ export class CrowdSystem {
     const armMat = new THREE.MeshStandardMaterial({ roughness: 0.8 });
     const scarfMat = new THREE.MeshStandardMaterial({ roughness: 0.68, emissiveIntensity: 0.1 });
 
-    const perTier = 52;
-    const count = STAND_TIER_COUNT * perTier;
+    const perTier = 38;
+    const frontTiers = 2;
+    const count = frontTiers * perTier;
 
     this.bodies = new THREE.InstancedMesh(bodyGeo, bodyMat, count);
     this.heads = new THREE.InstancedMesh(headGeo, headMat, count);
@@ -211,7 +183,7 @@ export class CrowdSystem {
     this.scarves.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
 
     let idx = 0;
-    for (let tier = 0; tier < STAND_TIER_COUNT; tier++) {
+    for (let tier = 0; tier < frontTiers; tier++) {
       const { rx, rz } = standTierRadii(tier);
       const feetY = standDeckTop(tier);
       for (let i = 0; i < perTier; i++) {
@@ -547,12 +519,14 @@ export class CrowdSystem {
   }
 
   _updateBackdrops(t) {
+    const sway = this.excitement * 0.003;
     this.backdrops.forEach((bd) => {
       const mat = bd.mat;
       if (!mat.map) return;
-      mat.map.offset.x = 0;
-      mat.map.offset.y = 0;
-      mat.emissiveIntensity = 0.12 + this.excitement * 0.08 + Math.sin(t * 0.8 + bd.phase) * 0.02;
+      mat.map.offset.x = Math.sin(t * 0.35 + bd.phase) * sway;
+      mat.map.offset.y = Math.cos(t * 0.28 + bd.phase * 1.3) * sway * 0.5;
+      mat.emissiveIntensity = 0.1 + this.excitement * 0.14 + Math.sin(t * 0.9 + bd.phase) * 0.03;
+      bd.mesh.rotation.z = Math.sin(t * 0.6 + bd.phase) * 0.008 * (1 + this.excitement);
     });
   }
 

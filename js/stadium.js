@@ -1,5 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { CrowdSystem } from './crowd.js';
+import { makeSeatRowTexture } from './crowd-textures.js';
 import { PITCH_W, PITCH_L, standRailY, standTierRadii, STAND_TIER_COUNT } from './stands.js';
 
 export { PITCH_W, PITCH_L };
@@ -84,6 +85,13 @@ export class Stadium {
       roughness: 0.88,
       metalness: 0
     });
+    loader.load('/assets/grass-texture.jpg', (t) => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(10, 6.5);
+      t.colorSpace = THREE.SRGBColorSpace;
+      pitchMat.map = t;
+      pitchMat.needsUpdate = true;
+    }, undefined, () => {});
     const pitch = new THREE.Mesh(pitchGeo, pitchMat);
     pitch.rotation.x = -Math.PI / 2;
     pitch.position.y = 0.02;
@@ -259,44 +267,10 @@ export class Stadium {
   }
 
   _buildStadium(loader, opts) {
-    const seatColors = [0x2e3d52, 0x354658, 0x3a4d64, 0x2a3848];
-    const railMat = new THREE.MeshStandardMaterial({ color: 0xaabbcc, roughness: 0.35, metalness: 0.55 });
-
-    for (let t = 0; t < STAND_TIER_COUNT; t++) {
-      const { rx, rz } = standTierRadii(t);
-      const y = standRailY(t);
-      const curve = new THREE.EllipseCurve(0, 0, rx, rz, 0, Math.PI * 2, false, 0);
-      const pts = curve.getPoints(80).map(p => new THREE.Vector3(p.x, y, p.y));
-      pts.push(pts[0].clone());
-      const rail = new THREE.Mesh(
-        new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 80, 0.1, 6, true),
-        railMat
-      );
-      this.group.add(rail);
-
-      const seatMat = new THREE.MeshStandardMaterial({
-        color: seatColors[t % seatColors.length],
-        roughness: 0.78,
-        metalness: 0.06
-      });
-
-      for (let i = 0; i < 40; i++) {
-        const a0 = (i / 40) * Math.PI * 2;
-        const a1 = ((i + 1) / 40) * Math.PI * 2;
-        const x0 = Math.cos(a0) * rx;
-        const z0 = Math.sin(a0) * rz;
-        const x1 = Math.cos(a1) * rx;
-        const z1 = Math.sin(a1) * rz;
-        const mx = (x0 + x1) / 2;
-        const mz = (z0 + z1) / 2;
-        const segLen = Math.hypot(x1 - x0, z1 - z0);
-        const deck = new THREE.Mesh(new THREE.BoxGeometry(segLen, 0.55, 2.8), seatMat);
-        deck.position.set(mx, y - 0.35, mz);
-        deck.rotation.y = Math.atan2(z1 - z0, x1 - x0);
-        this.group.add(deck);
-      }
-    }
-
+    const homeColor = opts.homeColor || '#1565c0';
+    this._buildStandBowl(homeColor);
+    this._buildStadiumFacade(opts);
+    this._buildRoofStructure();
     this._buildFloodlightTowers();
 
     this.crowd = new CrowdSystem(this.group, {
@@ -306,11 +280,158 @@ export class Stadium {
       awayName: opts.awayName || 'Away',
       loader
     });
+  }
 
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0x12182a, roughness: 0.55, metalness: 0.45 });
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(PITCH_L + 48, 1.6, PITCH_W + 52), roofMat);
-    roof.position.y = 22;
-    this.group.add(roof);
+  _buildStandBowl(homeColor) {
+    const concreteMat = new THREE.MeshStandardMaterial({ color: 0x3a4555, roughness: 0.88, metalness: 0.04 });
+    const railMat = new THREE.MeshStandardMaterial({ color: 0xb8c8d8, roughness: 0.32, metalness: 0.58 });
+    const seatTex = makeSeatRowTexture(homeColor);
+    const seatMat = new THREE.MeshStandardMaterial({
+      map: seatTex,
+      color: 0xd8e0ea,
+      roughness: 0.72,
+      metalness: 0.05
+    });
+    for (let t = 0; t < STAND_TIER_COUNT; t++) {
+      const { rx, rz } = standTierRadii(t);
+      const y = standRailY(t);
+      const deckH = 0.48 + t * 0.04;
+      const stepDepth = 2.6 - t * 0.08;
+
+      const curve = new THREE.EllipseCurve(0, 0, rx, rz, 0, Math.PI * 2, false, 0);
+      const pts = curve.getPoints(96).map(p => new THREE.Vector3(p.x, y, p.y));
+      pts.push(pts[0].clone());
+      const rail = new THREE.Mesh(
+        new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 96, 0.11, 6, true),
+        railMat
+      );
+      this.group.add(rail);
+
+      const segments = 48;
+      for (let i = 0; i < segments; i++) {
+        const a0 = (i / segments) * Math.PI * 2;
+        const a1 = ((i + 1) / segments) * Math.PI * 2;
+        const x0 = Math.cos(a0) * rx;
+        const z0 = Math.sin(a0) * rz;
+        const x1 = Math.cos(a1) * rx;
+        const z1 = Math.sin(a1) * rz;
+        const mx = (x0 + x1) / 2;
+        const mz = (z0 + z1) / 2;
+        const segLen = Math.hypot(x1 - x0, z1 - z0);
+        const yaw = Math.atan2(z1 - z0, x1 - x0);
+
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(segLen, deckH, stepDepth), seatMat);
+        deck.position.set(mx, y - 0.38, mz);
+        deck.rotation.y = yaw;
+        this.group.add(deck);
+
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(segLen, 1.8 + t * 0.35, 0.42), concreteMat);
+        wall.position.set(mx * 0.94, y - 1.1, mz * 0.94);
+        wall.rotation.y = yaw;
+        this.group.add(wall);
+      }
+
+      if (t === 2) {
+        const vip = new THREE.Mesh(
+          new THREE.BoxGeometry(PITCH_L * 0.34, 1.1, 3.6),
+          new THREE.MeshStandardMaterial({ color: 0x1a2438, roughness: 0.45, metalness: 0.35 })
+        );
+        vip.position.set(-rx * 0.55, y + 0.55, 0);
+        this.group.add(vip);
+        const glass = new THREE.Mesh(
+          new THREE.BoxGeometry(PITCH_L * 0.32, 0.85, 0.08),
+          new THREE.MeshStandardMaterial({
+            color: 0x88aacc,
+            transparent: true,
+            opacity: 0.35,
+            roughness: 0.1,
+            metalness: 0.6
+          })
+        );
+        glass.position.set(-rx * 0.55, y + 0.95, 1.85);
+        this.group.add(glass);
+      }
+    }
+  }
+
+  _buildStadiumFacade(opts) {
+    const homeName = (opts.homeName || 'SOCCER PRO').toUpperCase();
+    const c = document.createElement('canvas');
+    c.width = 1024;
+    c.height = 128;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#121a28';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = opts.homeColor || '#1565c0';
+    ctx.fillRect(0, 0, c.width, 18);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 52px Bebas Neue, Arial Black, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(homeName, c.width / 2, 72);
+    ctx.font = '18px Inter, Arial, sans-serif';
+    ctx.fillStyle = '#9ab0c8';
+    ctx.fillText('FIFA BROADCAST EDITION', c.width / 2, 108);
+    const nameTex = new THREE.CanvasTexture(c);
+    nameTex.colorSpace = THREE.SRGBColorSpace;
+    const facadeMat = new THREE.MeshStandardMaterial({
+      map: nameTex,
+      emissive: 0x223355,
+      emissiveIntensity: 0.25,
+      roughness: 0.55
+    });
+    const facade = new THREE.Mesh(new THREE.PlaneGeometry(28, 3.5), facadeMat);
+    facade.position.set(0, 9.5, -(PITCH_W / 2 + 22));
+    this.group.add(facade);
+
+    const tunnelMat = new THREE.MeshStandardMaterial({ color: 0x0e141e, roughness: 0.9 });
+    const tunnel = new THREE.Mesh(new THREE.BoxGeometry(7, 4.2, 3), tunnelMat);
+    tunnel.position.set(0, 2.1, PITCH_W / 2 + 18);
+    this.group.add(tunnel);
+    const tunnelArch = new THREE.Mesh(
+      new THREE.TorusGeometry(3.5, 0.28, 8, 24, Math.PI),
+      new THREE.MeshStandardMaterial({ color: 0x8899aa, metalness: 0.5, roughness: 0.35 })
+    );
+    tunnelArch.rotation.x = Math.PI / 2;
+    tunnelArch.rotation.z = Math.PI;
+    tunnelArch.position.set(0, 4.2, PITCH_W / 2 + 18);
+    this.group.add(tunnelArch);
+  }
+
+  _buildRoofStructure() {
+    const trussMat = new THREE.MeshStandardMaterial({ color: 0x1a2235, roughness: 0.48, metalness: 0.55 });
+    const canopyMat = new THREE.MeshStandardMaterial({
+      color: 0x0e1522,
+      roughness: 0.62,
+      metalness: 0.4,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide
+    });
+
+    [-1, 1].forEach((side) => {
+      const x = side * (PITCH_L / 2 + 8);
+      for (let i = 0; i < 9; i++) {
+        const z = -PITCH_W / 2 - 6 + i * ((PITCH_W + 12) / 8);
+        const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.35, 16, 0.35), trussMat);
+        pillar.position.set(x, 8, z);
+        this.group.add(pillar);
+      }
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, PITCH_W + 18), trussMat);
+      beam.position.set(x, 16.5, 0);
+      this.group.add(beam);
+      const canopy = new THREE.Mesh(new THREE.PlaneGeometry(PITCH_W + 20, 14), canopyMat);
+      canopy.rotation.x = side > 0 ? -0.22 : 0.22;
+      canopy.position.set(x + side * 5, 18, 0);
+      canopy.rotation.y = Math.PI / 2;
+      this.group.add(canopy);
+    });
+
+    const ringMat = new THREE.MeshStandardMaterial({ color: 0x151d2e, roughness: 0.5, metalness: 0.5 });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(58, 0.55, 8, 64), ringMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 19.5;
+    this.group.add(ring);
   }
 
   _buildFloodlightTowers() {
