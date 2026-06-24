@@ -3,17 +3,17 @@ const PITCH_L = 105;
 
 export { PITCH_W, PITCH_L };
 
-export const STAND_TIER_COUNT = 5;
+export const STAND_TIER_COUNT = 4;
 
 export function standTierRadii(tier) {
   return {
-    rx: PITCH_L / 2 + 18 + tier * 4.5,
-    rz: PITCH_W / 2 + 14 + tier * 3.6
+    rx: PITCH_L / 2 + 14 + tier * 5.2,
+    rz: PITCH_W / 2 + 11 + tier * 4.4
   };
 }
 
 export function standRailY(tier) {
-  return 1 + tier * 2.2;
+  return 1.2 + tier * 2.6;
 }
 
 export function standDeckTop(tier) {

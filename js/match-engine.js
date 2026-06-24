@@ -65,8 +65,8 @@ export class MatchEngine {
     this.renderer.toneMappingExposure = 1.15;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x1c3050);
-    this.scene.fog = new THREE.Fog(0x1c3050, 160, 340);
+    this.scene.background = new THREE.Color(0x7eb8e8);
+    this.scene.fog = new THREE.Fog(0xa8cce8, 200, 420);
 
     this.playerFill = new THREE.DirectionalLight(0xd8e8ff, 0.42);
     this.playerFill.position.set(-12, 18, 28);
