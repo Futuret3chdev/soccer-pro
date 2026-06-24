@@ -12,6 +12,15 @@ let mgmt = null;
 let hudTimer = null;
 let quickMode = false;
 let currentFixture = null;
+let adControlsBound = false;
+
+function bindAdControls() {
+  if (adControlsBound) return;
+  adControlsBound = true;
+  const adVideo = $('match-ad-video');
+  $('btn-ad-close')?.addEventListener('click', () => engine?.dismissAd());
+  adVideo?.addEventListener('ended', () => engine?.dismissAd());
+}
 
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === `${name}-screen`));
@@ -110,7 +119,11 @@ async function startMatch(opts) {
     engine.resize();
     await waitFrames(1);
     commentaryVoice.init();
-    engine.start();
+    bindAdControls();
+    engine.start({
+      adVideoEl: $('match-ad-video'),
+      adOverlayEl: $('match-ad-overlay')
+    });
     Audio.init();
     syncVoiceToggleUI();
 

@@ -504,6 +504,84 @@ button { font-family: var(--font); cursor: pointer; border: none; }
   font-size: 1.1rem;
 }
 
+.match-ad-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 55%, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.45) 100%);
+}
+.match-ad-overlay.hidden { display: none; }
+body.match-ad-active .match-hud,
+body.match-ad-active .commentary-bar,
+body.match-ad-active .desktop-hints,
+body.match-ad-active .btn-pause,
+body.match-ad-active .btn-voice-toggle {
+  opacity: 0.25;
+  transition: opacity 0.4s ease;
+}
+.match-ad-panel {
+  position: relative;
+  width: min(88vw, 520px);
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 3px solid rgba(0, 230, 118, 0.85);
+  box-shadow:
+    0 0 40px rgba(0, 230, 118, 0.25),
+    0 18px 50px rgba(0, 0, 0, 0.65);
+  transform: translateY(120vh);
+  opacity: 0;
+  transition: transform 1.1s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.5s ease;
+  pointer-events: auto;
+  background: #060a10;
+}
+.match-ad-overlay.rising .match-ad-panel,
+.match-ad-overlay.playing .match-ad-panel {
+  transform: translateY(0);
+  opacity: 1;
+}
+.match-ad-overlay.sinking .match-ad-panel {
+  transform: translateY(120vh);
+  opacity: 0;
+  transition: transform 0.85s cubic-bezier(0.55, 0, 1, 0.45), opacity 0.4s ease;
+}
+#match-ad-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #060a10;
+}
+.match-ad-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  z-index: 2;
+  backdrop-filter: blur(4px);
+}
+.match-ad-close:hover { background: rgba(200,40,40,0.85); }
+.match-ad-label {
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  color: rgba(255,255,255,0.55);
+  pointer-events: none;
+}
+
 .pause-overlay {
   position: absolute;
   inset: 0;

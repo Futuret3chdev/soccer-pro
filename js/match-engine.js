@@ -6,6 +6,7 @@ import { Audio } from './audio.js';
 import { CrowdAudio } from './crowd-audio.js';
 import { Commentary } from './commentary.js';
 import { commentaryVoice } from './commentary-voice.js';
+import { MatchAdPanel } from './match-ad.js';
 
 const MATCH_SEC = 120;
 const GOAL_W = 7.32;
@@ -61,16 +62,18 @@ export class MatchEngine {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.15;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x142238);
-    this.scene.fog = new THREE.Fog(0x142238, 55, 145);
+    this.scene.background = new THREE.Color(0x1c3050);
+    this.scene.fog = new THREE.Fog(0x1c3050, 60, 150);
 
     this.camera = new THREE.PerspectiveCamera(44, 1, 0.5, 200);
     this._camLook = new THREE.Vector3(0, 1, 0);
     this._camPos = new THREE.Vector3(0, 20, 40);
     this.cinematic = { active: false, t: 0, duration: 7.2 };
+    this.adPanel = null;
+    this._kickoffTimer = null;
     this.loader = new THREE.TextureLoader();
     this.stadium = new Stadium(this.scene, this.loader, {
       homeColor: this.homeColor,
@@ -391,13 +394,13 @@ export class MatchEngine {
     const p = player.mesh.position;
     this.controlRing.group.position.set(p.x, 0, p.z);
     this.controlRing.group.rotation.y = player.mesh.rotation.y;
-    this.controlRing.group.visible = !this.cinematic.active;
+    this.controlRing.group.visible = !this.cinematic.active && !this.adPanel?.active;
   }
 
   _updateControlRing(dt) {
     if (!this.controlRing) return;
     const player = this.entities.find(e => e.controlled);
-    if (!player || this.cinematic.active) {
+    if (!player || this.cinematic.active || this.adPanel?.active) {
       this.controlRing.group.visible = false;
       return;
     }
@@ -517,7 +520,7 @@ export class MatchEngine {
     return vel.x > 1.2 && pos.x > line - 6;
   }
 
-  start() {
+  start(opts = {}) {
     this.resize();
     this.running = true;
     this.paused = false;
@@ -526,25 +529,48 @@ export class MatchEngine {
     CrowdAudio.init();
     CrowdAudio.startAmbient();
     this._crowdWasWaving = false;
-    this.cinematic = { active: true, t: 0, duration: 7.2 };
+    this.cinematic = { active: false, t: 0, duration: 7.2 };
     this.manualSwitchTimer = 0;
     this._prevBallOwner = null;
     this.passTarget = null;
+    this._camPos.set(0, 5, 20);
+    this._camLook.set(0, 1.2, 0);
+    const groups = this.stadium.crowd?.getState()?.fanGroups;
+    if (groups) this.commentary.setContext({ fanGroups: groups });
+
+    if (this._kickoffTimer) clearTimeout(this._kickoffTimer);
+    this.adPanel?.destroy();
+    this.adPanel = new MatchAdPanel(this.scene, {
+      videoEl: opts.adVideoEl || null,
+      overlayEl: opts.adOverlayEl || null,
+      onComplete: () => this._beginMatchIntro()
+    });
+    this.adPanel.start();
+    this._render();
+    this._loop();
+  }
+
+  dismissAd() {
+    this.adPanel?.dismiss();
+  }
+
+  _beginMatchIntro() {
+    this.cinematic = { active: true, t: 0, duration: 7.2 };
     this._camPos.set(0, 28, 55);
     this._camLook.set(0, 0, 0);
     Audio.whistle();
-    const groups = this.stadium.crowd?.getState()?.fanGroups;
-    if (groups) this.commentary.setContext({ fanGroups: groups });
     this.commentary.matchIntro();
-    setTimeout(() => this.commentary.kickoff(), 7200);
-    this._render();
-    this._loop();
+    if (this._kickoffTimer) clearTimeout(this._kickoffTimer);
+    this._kickoffTimer = setTimeout(() => this.commentary.kickoff(), 7200);
   }
 
   stop() {
     this.running = false;
     cancelAnimationFrame(this._raf);
     this._resizeObserver?.disconnect();
+    if (this._kickoffTimer) clearTimeout(this._kickoffTimer);
+    this.adPanel?.destroy();
+    this.adPanel = null;
     commentaryVoice.stop();
     CrowdAudio.stop();
   }
@@ -565,6 +591,16 @@ export class MatchEngine {
   }
 
   _update(dt) {
+    if (this.adPanel?.active) {
+      this.adPanel.update(dt);
+      this._updateAdCamera(dt);
+      if (this.stadium.crowd) {
+        this.stadium.crowd.update(dt);
+        CrowdAudio.tick(dt, this.stadium.crowd.excitement);
+      }
+      return;
+    }
+
     if (this.cinematic.active) {
       this.cinematic.t += dt;
       this._updateCinematicCamera(dt);
@@ -1175,6 +1211,17 @@ export class MatchEngine {
       look: new THREE.Vector3(0, 1, 0).lerp(gp.look, blend),
       fov: THREE.MathUtils.lerp(46, gp.fov, blend)
     };
+  }
+
+  _updateAdCamera(dt) {
+    const shot = this.adPanel.getCameraTarget();
+    const ease = 1 - Math.exp(-4 * dt);
+    this._camPos.lerp(shot.pos, ease);
+    this._camLook.lerp(shot.look, ease);
+    this.camera.position.copy(this._camPos);
+    this.camera.lookAt(this._camLook);
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, shot.fov, dt * 3);
+    this.camera.updateProjectionMatrix();
   }
 
   _updateCinematicCamera(dt) {

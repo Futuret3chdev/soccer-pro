@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=26">
+  <link rel="stylesheet" href="/css/style.css?v=27">
 </head>
 <body>
   <div id="app">
@@ -155,6 +155,14 @@
       <button class="btn-voice-toggle" id="btn-voice-toggle" type="button" aria-pressed="true" title="Voice commentary on">🔊</button>
       <button class="btn-pause" id="btn-pause" type="button">⏸</button>
 
+      <div class="match-ad-overlay hidden" id="match-ad-overlay">
+        <div class="match-ad-panel" id="match-ad-panel">
+          <video id="match-ad-video" playsinline muted></video>
+          <button class="match-ad-close" id="btn-ad-close" type="button" aria-label="Skip ad and start match">✕</button>
+          <span class="match-ad-label">SPONSORED</span>
+        </div>
+      </div>
+
       <div class="pause-overlay hidden" id="pause-overlay">
         <div class="pause-card">
           <h3>Paused</h3>
@@ -203,6 +211,6 @@
     </div>
   </div>
 
-  <script type="module" src="/js/main.js?v=26"></script>
+  <script type="module" src="/js/main.js?v=27"></script>
 </body>
 </html>

@@ -10,12 +10,12 @@ function makeGrassTexture() {
   c.height = 1024;
   const ctx = c.getContext('2d');
 
-  ctx.fillStyle = '#267a34';
+  ctx.fillStyle = '#2d8f3e';
   ctx.fillRect(0, 0, 1024, 1024);
 
   for (let col = 0; col < 16; col++) {
     const stripe = col % 2 === 0;
-    ctx.fillStyle = stripe ? '#2f8f3e' : '#1e6b2c';
+    ctx.fillStyle = stripe ? '#38a84a' : '#268a38';
     ctx.fillRect(col * 64, 0, 64, 1024);
   }
 
@@ -78,9 +78,11 @@ export class Stadium {
   _buildPitch(loader, opts) {
     const grassTex = makeGrassTexture();
     const pitchGeo = new THREE.PlaneGeometry(PITCH_L, PITCH_W);
-    const pitchMat = new THREE.MeshLambertMaterial({
+    const pitchMat = new THREE.MeshStandardMaterial({
       map: grassTex,
-      color: 0xffffff
+      color: 0xf4fff6,
+      roughness: 0.88,
+      metalness: 0
     });
     const pitch = new THREE.Mesh(pitchGeo, pitchMat);
     pitch.rotation.x = -Math.PI / 2;
@@ -337,10 +339,10 @@ export class Stadium {
   }
 
   _buildLights() {
-    this.scene.add(new THREE.AmbientLight(0x8aaa90, 0.55));
-    this.scene.add(new THREE.HemisphereLight(0x9eb8d8, 0x2d7a38, 0.35));
+    this.scene.add(new THREE.AmbientLight(0xa8c4b0, 0.72));
+    this.scene.add(new THREE.HemisphereLight(0xb8d4f0, 0x3d9a4a, 0.5));
 
-    this.sun = new THREE.DirectionalLight(0xfff6e8, 1.15);
+    this.sun = new THREE.DirectionalLight(0xfff8ee, 1.38);
     this.sun.position.set(40, 60, 30);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -354,9 +356,9 @@ export class Stadium {
     this.scene.add(this.sun);
 
     [[-48, 38, 0], [48, 38, 0], [0, 38, -32], [0, 38, 32]].forEach(([x, y, z]) => {
-      const spot = new THREE.SpotLight(0xfff4e0, 28, 300, Math.PI / 3.2, 0.65, 2);
+      const spot = new THREE.SpotLight(0xfff6e8, 34, 320, Math.PI / 3.4, 0.58, 1.8);
       spot.position.set(x, y, z);
-      spot.target.position.set(x * 0.15, 0, z * 0.15);
+      spot.target.position.set(x * 0.22, 0, z * 0.22);
       this.scene.add(spot);
       this.scene.add(spot.target);
     });
