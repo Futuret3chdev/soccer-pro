@@ -5,12 +5,16 @@ let ambientSrc = null;
 let running = false;
 let excitement = 0.25;
 let chatterTimer = 0;
+let commentaryDucked = false;
+
+const MASTER_NORMAL = 0.58;
+const MASTER_DUCKED = 0.16;
 
 function ensureCtx() {
   if (!ctx) {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     master = ctx.createGain();
-    master.gain.value = 1.35;
+    master.gain.value = MASTER_NORMAL;
     master.connect(ctx.destination);
     ambient = ctx.createGain();
     ambient.gain.value = 0;
@@ -97,6 +101,17 @@ function sustainedRoar(duration, vol, freq = 580) {
 export const CrowdAudio = {
   init() { ensureCtx(); },
 
+  setCommentaryDuck(on) {
+    if (!ctx || !master) return;
+    commentaryDucked = !!on;
+    master.gain.cancelScheduledValues(ctx.currentTime);
+    master.gain.setTargetAtTime(
+      commentaryDucked ? MASTER_DUCKED : MASTER_NORMAL,
+      ctx.currentTime,
+      0.1
+    );
+  },
+
   startAmbient() {
     const ac = ensureCtx();
     if (running) return;
@@ -118,7 +133,7 @@ export const CrowdAudio = {
     lp.connect(ambient);
     ambient.gain.cancelScheduledValues(ac.currentTime);
     ambient.gain.setValueAtTime(0.001, ac.currentTime);
-    ambient.gain.exponentialRampToValueAtTime(0.16, ac.currentTime + 1.5);
+    ambient.gain.exponentialRampToValueAtTime(0.05, ac.currentTime + 1.5);
     ambientSrc.start();
   },
 
@@ -135,7 +150,7 @@ export const CrowdAudio = {
   tick(dt, crowdExcitement = 0.25) {
     if (!running || !ctx) return;
     excitement = crowdExcitement;
-    const target = 0.12 + excitement * 0.22;
+    const target = commentaryDucked ? 0.012 + excitement * 0.02 : 0.035 + excitement * 0.07;
     ambient.gain.cancelScheduledValues(ctx.currentTime);
     ambient.gain.setTargetAtTime(target, ctx.currentTime, 0.35);
 
@@ -147,7 +162,7 @@ export const CrowdAudio = {
   },
 
   chatter() {
-    const vol = 0.028 + excitement * 0.045;
+    const vol = 0.012 + excitement * 0.018;
     const bursts = 3 + Math.floor(Math.random() * 4);
     for (let i = 0; i < bursts; i++) {
       setTimeout(() => {
@@ -157,7 +172,7 @@ export const CrowdAudio = {
   },
 
   cheer(intensity = 1, homeLean = 0.7) {
-    const vol = 0.22 + intensity * 0.38;
+    const vol = 0.11 + intensity * 0.2;
     sustainedRoar(1.8 + intensity * 0.8, vol * 0.75, 520);
     burstNoise(0.75, vol, 480, 0.65);
     burstNoise(0.6, vol * 0.9, 680, 0.85);
@@ -172,7 +187,7 @@ export const CrowdAudio = {
   },
 
   boo(intensity = 1) {
-    const vol = 0.2 + intensity * 0.32;
+    const vol = 0.1 + intensity * 0.18;
     sustainedRoar(1.4 + intensity * 0.6, vol * 0.7, 160);
     burstNoise(0.9, vol, 150, 0.45, 'lowpass');
     burstNoise(0.75, vol * 0.85, 110, 0.35, 'lowpass');
@@ -184,19 +199,19 @@ export const CrowdAudio = {
   },
 
   ooh() {
-    const vol = 0.12 + excitement * 0.12;
+    const vol = 0.06 + excitement * 0.06;
     burstNoise(0.35, vol, 420, 0.6, 'bandpass');
     toneBurst(180, 0.25, vol * 0.35, -30);
   },
 
   chant(homeLean = 0.7) {
-    const vol = 0.1 + excitement * 0.12;
+    const vol = 0.05 + excitement * 0.06;
     const notes = homeLean > 0.5 ? [196, 247, 294, 330] : [175, 220, 262, 294];
     notes.forEach((n, i) => setTimeout(() => toneBurst(n, 0.28, vol, 0), i * 140));
   },
 
   waveCheer() {
-    const vol = 0.14 + excitement * 0.12;
+    const vol = 0.07 + excitement * 0.06;
     sustainedRoar(0.9, vol, 560);
     burstNoise(0.45, vol, 580, 1);
     setTimeout(() => burstNoise(0.4, vol * 0.85, 700, 0.95), 90);
@@ -206,7 +221,7 @@ export const CrowdAudio = {
     if (scoredByHome) {
       this.cheer(1.6, 0.92);
       setTimeout(() => this.chant(0.95), 600);
-      setTimeout(() => sustainedRoar(2.2, 0.42, 600), 900);
+      setTimeout(() => sustainedRoar(2.2, 0.22, 600), 900);
     } else {
       this.boo(1.5);
       setTimeout(() => this.boo(0.85), 450);
@@ -215,7 +230,7 @@ export const CrowdAudio = {
   },
 
   reactAttack(homeTeam) {
-    const vol = 0.08 + excitement * 0.1;
+    const vol = 0.04 + excitement * 0.05;
     burstNoise(0.28, vol, homeTeam ? 540 : 500, 1);
     if (Math.random() < 0.45) {
       setTimeout(() => burstNoise(0.22, vol * 0.8, 620, 0.9), 60);

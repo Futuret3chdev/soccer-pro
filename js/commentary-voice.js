@@ -1,3 +1,5 @@
+import { CrowdAudio } from './crowd-audio.js';
+
 const STORAGE_KEY = 'soccer-pro-voice';
 
 function pickVoice(voices) {
@@ -90,6 +92,7 @@ export class CommentaryVoice {
     window.speechSynthesis.cancel();
     this.queue = [];
     this.speaking = false;
+    CrowdAudio.setCommentaryDuck(false);
   }
 
   speak(text, { priority = 'normal' } = {}) {
@@ -131,15 +134,20 @@ export class CommentaryVoice {
     u.lang = 'en-GB';
     if (this.voice) u.voice = this.voice;
 
-    u.onstart = () => { this.speaking = true; };
+    u.onstart = () => {
+      this.speaking = true;
+      CrowdAudio.setCommentaryDuck(true);
+    };
 
     u.onend = () => {
       this.speaking = false;
+      if (!this.queue.length) CrowdAudio.setCommentaryDuck(false);
       this._drainQueue();
     };
 
     u.onerror = () => {
       this.speaking = false;
+      if (!this.queue.length) CrowdAudio.setCommentaryDuck(false);
       this._drainQueue();
     };
 
