@@ -23,7 +23,12 @@ export class MatchEngine {
     this.onGoal = opts.onGoal || (() => {});
     this.onEnd = opts.onEnd || (() => {});
     this.onCommentary = opts.onCommentary || (() => {});
-    this.commentary = new Commentary((line) => this.onCommentary(line), commentaryVoice);
+    this.commentary = new Commentary((line) => this.onCommentary(line), commentaryVoice, {
+      homeName: this.homeName,
+      awayName: this.awayName,
+      homeSquad: this.homeSquad,
+      awaySquad: this.awaySquad
+    });
     this.setPiece = null;
     this.outCooldown = 0;
 
@@ -198,7 +203,8 @@ export class MatchEngine {
     this.clock.start();
     Audio.init();
     Audio.whistle();
-    this.commentary.kickoff();
+    this.commentary.matchIntro();
+    setTimeout(() => this.commentary.kickoff(), 2800);
     this._render();
     this._loop();
   }
@@ -244,8 +250,17 @@ export class MatchEngine {
 
     if (this.announceTimer > 0) this.announceTimer -= dt;
     if (this.outCooldown > 0) this.outCooldown -= dt;
+    this.commentary.setContext({
+      homeScore: this.homeScore,
+      awayScore: this.awayScore,
+      half: this.half,
+      timeLeft: this.timeLeft
+    });
     this.commentary.tick(dt);
-    if (!this.setPiece && this.announceTimer <= 0) this.commentary.maybeBuildUp(dt);
+    if (!this.setPiece && this.announceTimer <= 0) {
+      const carrier = this.ball.owner || this.entities.find(e => e.controlled);
+      this.commentary.maybeBuildUp(dt, carrier);
+    }
 
     if (this.setPiece) {
       this._updateSetPiece(dt);
@@ -322,6 +337,7 @@ export class MatchEngine {
       e.mesh.position.z = THREE.MathUtils.clamp(ball.z, -GOAL_W / 2 + 0.5, GOAL_W / 2 - 0.5);
       if (dist < 2 && this.ball.owner !== e) {
         this.ball.owner = e;
+        if (Math.random() < 0.35) this.commentary.save(e);
         this._kickBall(e, 0.4, true);
       }
       return;
@@ -366,7 +382,7 @@ export class MatchEngine {
     this.ball.owner = null;
     this.ball.lastOwner = player;
     Audio.kick();
-    if (power > 0.55) this.commentary.shot();
+    if (power > 0.55) this.commentary.shot(player);
   }
 
   _passBall(player) {
@@ -383,6 +399,7 @@ export class MatchEngine {
     this.ball.owner = null;
     this.ball.lastOwner = player;
     Audio.pass();
+    this.commentary.pass(player, best);
   }
 
   _updateBall(dt) {
@@ -419,13 +436,15 @@ export class MatchEngine {
     if (bx < -PITCH_L / 2 + GOAL_DEPTH && this.announceTimer <= 0) {
       this.awayScore++;
       this.onGoal('away', this.awayScore, this.homeScore);
-      this.commentary.goal(this.awayName, true);
+      this.commentary.setContext({ homeScore: this.homeScore, awayScore: this.awayScore });
+      this.commentary.goal(this.ball.lastOwner, true);
       this._celebrate();
       this._kickoff();
     } else if (bx > PITCH_L / 2 - GOAL_DEPTH && this.announceTimer <= 0) {
       this.homeScore++;
       this.onGoal('home', this.homeScore, this.awayScore);
-      this.commentary.goal(this.homeName, false);
+      this.commentary.setContext({ homeScore: this.homeScore, awayScore: this.awayScore });
+      this.commentary.goal(this.ball.lastOwner, false);
       this._celebrate();
       this._kickoff();
     }
@@ -479,7 +498,7 @@ export class MatchEngine {
     this.outCooldown = 2.5;
     this.announceTimer = 1.8;
     const name = throwHome ? this.homeName : this.awayName;
-    this.commentary.throwIn(name);
+    this.commentary.throwIn(name, nearest);
     Audio.whistle();
   }
 
