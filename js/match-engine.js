@@ -68,6 +68,10 @@ export class MatchEngine {
     this.scene.background = new THREE.Color(0x1c3050);
     this.scene.fog = new THREE.Fog(0x1c3050, 60, 150);
 
+    this.playerFill = new THREE.DirectionalLight(0xd8e8ff, 0.42);
+    this.playerFill.position.set(-12, 18, 28);
+    this.scene.add(this.playerFill);
+
     this.camera = new THREE.PerspectiveCamera(44, 1, 0.5, 200);
     this._camLook = new THREE.Vector3(0, 1, 0);
     this._camPos = new THREE.Vector3(0, 20, 40);
@@ -263,7 +267,8 @@ export class MatchEngine {
       skinTone: data.skin ?? 0.5,
       hairColor: data.hair || 0x1a1a1a,
       number: num,
-      height: data.height || 1.8
+      height: data.height || 1.82,
+      isGK: slot.role === 'GK'
     });
 
     const x = (slot.x - 0.5) * PITCH_L;
