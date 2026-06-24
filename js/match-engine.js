@@ -363,6 +363,7 @@ export class MatchEngine {
           this.commentary.save(e);
           this.stadium.crowd?.reactSave(e.isHome);
           CrowdAudio.reactAttack(e.isHome);
+          if (!e.isHome) CrowdAudio.ooh();
         }
         this._kickBall(e, 0.4, true);
       }
@@ -411,7 +412,7 @@ export class MatchEngine {
     if (power > 0.55) {
       this.commentary.shot(player);
       this.stadium.crowd?.reactAttack(player.isHome);
-      CrowdAudio.reactAttack(player.isHome);
+      CrowdAudio.reactShot(player.isHome);
     }
   }
 
@@ -482,8 +483,9 @@ export class MatchEngine {
 
   _celebrate(homeScored) {
     Audio.goal();
-    this.stadium.crowd?.reactGoal(homeScored);
+      this.stadium.crowd?.reactGoal(homeScored);
     CrowdAudio.reactGoal(homeScored);
+    if (!homeScored) this.stadium.crowd?.reactBoo?.();
     this.announceTimer = 2.5;
   }
 
