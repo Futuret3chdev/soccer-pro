@@ -90,7 +90,16 @@ export class MatchAdPanel {
     v.load();
   }
 
+  _fitPanelToVideo() {
+    const v = this.videoEl;
+    const panel = this.overlayEl?.querySelector('.match-ad-panel');
+    if (!v?.videoWidth || !v?.videoHeight || !panel) return;
+    panel.style.aspectRatio = `${v.videoWidth} / ${v.videoHeight}`;
+    panel.style.width = `min(92vw, 720px, calc((100dvh - 120px) * ${v.videoWidth} / ${v.videoHeight}))`;
+  }
+
   _onVideoReady() {
+    this._fitPanelToVideo();
     this.overlayEl?.classList.remove('loading');
     this._playVideo();
   }

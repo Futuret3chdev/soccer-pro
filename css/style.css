@@ -525,7 +525,8 @@ body.match-ad-active .btn-voice-toggle {
 }
 .match-ad-panel {
   position: relative;
-  width: min(92vw, 640px);
+  width: min(92vw, 720px, calc((100dvh - 120px) * 16 / 9));
+  max-height: calc(100dvh - 120px);
   aspect-ratio: 16 / 9;
   border-radius: 12px;
   overflow: hidden;
@@ -537,6 +538,7 @@ body.match-ad-active .btn-voice-toggle {
   opacity: 0;
   transition: transform 0.85s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.45s ease;
   background: #060a10;
+  box-sizing: border-box;
 }
 .match-ad-overlay.rising .match-ad-panel,
 .match-ad-overlay.playing .match-ad-panel,
@@ -571,9 +573,12 @@ body.match-ad-active .btn-voice-toggle {
   display: grid;
 }
 #match-ad-video {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center center;
   display: block;
   background: #060a10;
 }
