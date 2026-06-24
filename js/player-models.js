@@ -49,10 +49,23 @@ function normalizeModel(root) {
   root.position.y = root.userData.groundOffset;
 }
 
+function prepareSkinnedMesh(mesh) {
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
+  if (mesh.skeleton) mesh.skeleton.pose();
+  mesh.computeBoundingSphere();
+  mesh.computeBoundingBox();
+}
+
 function cloneScene(source) {
   const clone = SkeletonUtils.clone(source);
   clone.traverse((o) => {
-    if (o.isMesh) {
+    if (o.isSkinnedMesh) {
+      prepareSkinnedMesh(o);
+      if (Array.isArray(o.material)) o.material = o.material.map(m => m.clone());
+      else if (o.material) o.material = o.material.clone();
+    } else if (o.isMesh) {
       o.castShadow = true;
       o.receiveShadow = true;
       if (Array.isArray(o.material)) o.material = o.material.map(m => m.clone());
@@ -184,6 +197,8 @@ export async function preloadPlayerModels() {
     const gkScene = gk.scene;
     normalizeModel(fieldScene);
     normalizeModel(gkScene);
+    fieldScene.traverse((o) => { if (o.isSkinnedMesh) prepareSkinnedMesh(o); });
+    gkScene.traverse((o) => { if (o.isSkinnedMesh) prepareSkinnedMesh(o); });
     fieldScene.userData._baseHeight = TARGET_HEIGHT;
     gkScene.userData._baseHeight = TARGET_HEIGHT;
 
@@ -252,7 +267,8 @@ export function createPlayer(opts = {}) {
     if (lib.clips.kick) {
       actions.kick = mixer.clipAction(lib.clips.kick);
       actions.kick.loop = THREE.LoopOnce;
-      actions.kick.clampWhenFinished = true;
+      actions.kick.clampWhenFinished = false;
+      actions.kick.setEffectiveWeight(0);
     }
   }
 
@@ -288,34 +304,40 @@ export function animatePlayer(mesh, speed, kicking = false, dt = 0.016, sliding 
 
     if (kicking && d.actions?.kick && d.kickTimer <= 0) {
       d.kickTimer = 0.55;
-      d.actions.kick.reset().play();
-      d.actions.kick.setEffectiveWeight(1);
-      if (d.actions.run) d.actions.run.setEffectiveWeight(0);
-    } else if (!kickingNow && d.actions?.kick?.getEffectiveWeight() > 0) {
-      d.actions.kick.setEffectiveWeight(0);
-      if (d.actions.run) d.actions.run.setEffectiveWeight(1);
+      d.actions.kick.reset().setEffectiveWeight(1).play();
+    } else if (!kickingNow && d.actions?.kick) {
+      const kw = d.actions.kick.getEffectiveWeight();
+      if (kw > 0.01) d.actions.kick.fadeOut(0.15);
+      else if (kw > 0) d.actions.kick.setEffectiveWeight(0);
     }
 
     if (d.actions?.idle) {
       if (!d.actions.idle.isRunning()) d.actions.idle.play();
-    } else if (d.actions?.run && !kickingNow) {
+    } else if (d.actions?.run) {
       const startMove = d.moveThreshold;
       const stopMove = Math.max(0.3, d.moveThreshold - 0.35);
       if (!d.locomotion && speed > startMove && d.slideBlend < 0.12) d.locomotion = true;
       else if (d.locomotion && speed < stopMove) d.locomotion = false;
 
-      if (d.locomotion) {
+      const kickBlend = d.actions?.kick?.getEffectiveWeight() || 0;
+      const runWeight = THREE.MathUtils.lerp(1, 0.35, kickBlend);
+      if (d.locomotion && kickBlend < 0.5) {
         const pace = THREE.MathUtils.lerp(0.95, 1.25, Math.min(speed / 6.5, 1));
         d.actions.run.setEffectiveTimeScale(pace);
-        d.actions.run.setEffectiveWeight(1);
       } else {
         d.actions.run.setEffectiveTimeScale(0);
-        d.actions.run.setEffectiveWeight(1);
       }
+      d.actions.run.setEffectiveWeight(runWeight);
       if (!d.actions.run.isRunning()) d.actions.run.play();
     }
 
     d.mixer.update(dt);
+    mesh.traverse((o) => {
+      if (o.isSkinnedMesh) {
+        o.computeBoundingSphere();
+        o.computeBoundingBox();
+      }
+    });
   }
 
   const baseY = d.groundOffset || 0;
