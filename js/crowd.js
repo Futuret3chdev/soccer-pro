@@ -3,6 +3,14 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.m
 const PITCH_W = 68;
 const PITCH_L = 105;
 
+function standDeckTop(tier) {
+  return 1 + tier * 2.2 - 0.35 + 0.275;
+}
+
+function fanSeatY(tier) {
+  return standDeckTop(tier) + 0.38;
+}
+
 const PERSONALITY = {
   DIEHARD: 'diehard',
   CASUAL: 'casual',
@@ -197,8 +205,8 @@ export class CrowdSystem {
     const scarfMat = new THREE.MeshStandardMaterial({ roughness: 0.7, emissiveIntensity: 0.12 });
 
     const rings = [
-      { tiers: 5, perTier: 72, a: PITCH_L / 2 + 14, b: PITCH_W / 2 + 11, y0: 2, yStep: 1.6, tierMul: 0.08 },
-      { tiers: 4, perTier: 56, a: PITCH_L / 2 + 26, b: PITCH_W / 2 + 20, y0: 11, yStep: 1.9, tierMul: 0.07 }
+      { tiers: 5, perTier: 64, a: PITCH_L / 2 + 17, b: PITCH_W / 2 + 13, yForTier: fanSeatY, tierMul: 0.03 },
+      { tiers: 3, perTier: 48, a: PITCH_L / 2 + 26, b: PITCH_W / 2 + 21, yForTier: (t) => fanSeatY(Math.min(4, t + 2)), tierMul: 0.025 }
     ];
     const count = rings.reduce((s, r) => s + r.tiers * r.perTier, 0);
 
@@ -221,7 +229,7 @@ export class CrowdSystem {
           const tierMul = 1 + tier * ring.tierMul;
           const x = Math.cos(theta) * ring.a * tierMul;
           const z = Math.sin(theta) * ring.b * tierMul;
-          const y = ring.y0 + tier * ring.yStep;
+          const y = ring.yForTier(tier);
           const side = fanSide(theta);
           const personality = pickPersonality(side);
           const color = shirtColor(personality, this.homeColor, this.awayColor);
@@ -313,7 +321,7 @@ export class CrowdSystem {
       const tierMul = 1 + spot.tier * 0.14;
       const x = Math.cos(spot.theta) * a * tierMul;
       const z = Math.sin(spot.theta) * b * tierMul;
-      const y = 2.8 + spot.tier * 2.1;
+      const y = standDeckTop(spot.tier) + 1.1;
       const tex = makeBannerTexture(name, `#${this.homeColor.getHexString()}`);
       const mat = new THREE.MeshStandardMaterial({
         map: tex,
@@ -440,9 +448,9 @@ export class CrowdSystem {
     fan.cheer = Math.max(0, fan.cheer - dt * 0.35);
 
     const energy = 0.7 + this.excitement * 0.55;
-    const idleBob = Math.sin(t * 2.8 + fan.phase) * 0.14 * energy;
-    const idleSway = Math.sin(t * 1.6 + fan.phase2) * 0.11 * energy;
-    const shuffle = Math.sin(t * 4.2 + fan.phase * 1.7) * 0.07 * energy;
+    const idleBob = Math.sin(t * 2.8 + fan.phase) * 0.05 * energy;
+    const idleSway = Math.sin(t * 1.6 + fan.phase2) * 0.06 * energy;
+    const shuffle = Math.sin(t * 4.2 + fan.phase * 1.7) * 0.04 * energy;
     const headNod = Math.sin(t * 3.3 + fan.phase) * 0.06;
 
     let stand = 0;
@@ -460,10 +468,10 @@ export class CrowdSystem {
     stand = Math.max(stand, fan.cheer * 0.85 + rowdyBoost);
     fan.stand = stand;
 
-    const bounce = Math.sin(t * 9 + fan.idx) * stand * 0.06;
+    const bounce = Math.sin(t * 9 + fan.idx) * stand * 0.03;
     const sc = fan.scale || 1;
-    const scaleY = sc * (0.92 + stand * 0.55 + Math.abs(idleBob) * 0.18);
-    const lift = idleBob + stand * 0.45 + bounce;
+    const scaleY = sc * (0.96 + stand * 0.38 + Math.abs(idleBob) * 0.08);
+    const lift = idleBob + stand * 0.22 + bounce;
     const lean = idleSway + shuffle;
 
     const px = fan.x + Math.cos(fan.theta) * lean;
@@ -521,7 +529,7 @@ export class CrowdSystem {
     this.banners.forEach((b) => {
       const sway = Math.sin(t * 1.4 + b.phase) * 0.08;
       b.mesh.rotation.z = sway;
-      b.mesh.position.y = b.baseY + Math.sin(t * 2 + b.phase) * 0.12;
+      b.mesh.position.y = b.baseY + Math.sin(t * 2 + b.phase) * 0.04;
       b.mesh.material.emissiveIntensity = 0.06 + this.excitement * 0.15;
     });
   }
@@ -556,8 +564,9 @@ export class CrowdSystem {
     this.backdrops.forEach((bd) => {
       const mat = bd.mat;
       if (!mat.map) return;
-      mat.map.offset.x = (t * 0.04 + bd.phase) % 1;
-      mat.map.offset.y = Math.sin(t * 0.5 + bd.phase) * 0.02;
+      mat.map.offset.x = 0;
+      mat.map.offset.y = 0;
+      mat.emissiveIntensity = 0.12 + this.excitement * 0.08 + Math.sin(t * 0.8 + bd.phase) * 0.02;
     });
   }
 

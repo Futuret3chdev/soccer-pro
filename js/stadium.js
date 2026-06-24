@@ -15,7 +15,7 @@ function makeGrassTexture() {
   for (let row = 0; row < 32; row++) {
     for (let col = 0; col < 32; col++) {
       const stripe = col % 2 === 0;
-      const hue = stripe ? '#3fa84d' : '#358a40';
+      const hue = stripe ? '#4cb858' : '#3a9a46';
       ctx.fillStyle = hue;
       ctx.fillRect(col * 32, row * 32, 32, 32);
     }
@@ -83,33 +83,27 @@ export class Stadium {
     const pitchGeo = new THREE.PlaneGeometry(PITCH_L, PITCH_W);
     const pitchMat = new THREE.MeshStandardMaterial({
       map: grassTex,
-      roughness: 0.82,
+      roughness: 0.86,
       metalness: 0.01,
-      color: 0x9edfa8
+      color: 0xffffff
     });
-    loader.load('/assets/grass-texture.jpg', (img) => {
-      img.wrapS = img.wrapT = THREE.RepeatWrapping;
-      img.repeat.set(10, 6.5);
-      img.colorSpace = THREE.SRGBColorSpace;
-      pitchMat.map = img;
-      pitchMat.needsUpdate = true;
-    }, undefined, () => {});
     const pitch = new THREE.Mesh(pitchGeo, pitchMat);
     pitch.rotation.x = -Math.PI / 2;
+    pitch.position.y = 0.02;
     pitch.receiveShadow = true;
     this.group.add(pitch);
 
-    const trackMat = new THREE.MeshStandardMaterial({ color: 0x252f3a, roughness: 0.92 });
-    const track = new THREE.Mesh(new THREE.PlaneGeometry(PITCH_L + 14, PITCH_W + 14), trackMat);
+    const trackMat = new THREE.MeshStandardMaterial({ color: 0x2a3540, roughness: 0.92 });
+    const track = new THREE.Mesh(new THREE.PlaneGeometry(PITCH_L + 10, PITCH_W + 10), trackMat);
     track.rotation.x = -Math.PI / 2;
-    track.position.y = -0.03;
+    track.position.y = -0.01;
     track.receiveShadow = true;
     this.group.add(track);
 
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x141e2a, roughness: 0.95 });
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x1a2430, roughness: 0.95 });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(PITCH_L + 70, PITCH_W + 70), floorMat);
     floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -0.06;
+    floor.position.y = -0.04;
     this.group.add(floor);
 
     const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -351,7 +345,7 @@ export class Stadium {
 
   _buildLights() {
     this.scene.add(new THREE.AmbientLight(0x607090, 0.42));
-    this.scene.add(new THREE.HemisphereLight(0xb8c8e8, 0x2d5a32, 0.38));
+    this.scene.add(new THREE.HemisphereLight(0xb8c8e8, 0x3d8a48, 0.48));
 
     this.sun = new THREE.DirectionalLight(0xfff2d6, 2.2);
     this.sun.position.set(35, 52, 22);
