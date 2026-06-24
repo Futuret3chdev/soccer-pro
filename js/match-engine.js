@@ -3,6 +3,7 @@ import { Stadium, PITCH_W, PITCH_L } from './stadium.js';
 import { createHumanoid, animateHumanoid } from './models.js';
 import { FORMATIONS, genSquad } from './data.js';
 import { Audio } from './audio.js';
+import { CrowdAudio } from './crowd-audio.js';
 import { Commentary } from './commentary.js';
 import { commentaryVoice } from './commentary-voice.js';
 
@@ -55,7 +56,11 @@ export class MatchEngine {
 
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.5, 300);
     this.loader = new THREE.TextureLoader();
-    this.stadium = new Stadium(this.scene, this.loader);
+    this.stadium = new Stadium(this.scene, this.loader, {
+      homeColor: this.homeColor,
+      awayColor: this.awayColor
+    });
+    this._crowdWasWaving = false;
 
     this.clock = new THREE.Clock();
     this.running = false;
@@ -202,6 +207,9 @@ export class MatchEngine {
     this.paused = false;
     this.clock.start();
     Audio.init();
+    CrowdAudio.init();
+    CrowdAudio.startAmbient();
+    this._crowdWasWaving = false;
     Audio.whistle();
     this.commentary.matchIntro();
     setTimeout(() => this.commentary.kickoff(), 2800);
@@ -214,6 +222,7 @@ export class MatchEngine {
     cancelAnimationFrame(this._raf);
     this._resizeObserver?.disconnect();
     commentaryVoice.stop();
+    CrowdAudio.stop();
   }
 
   pause(v) {
@@ -257,6 +266,15 @@ export class MatchEngine {
       timeLeft: this.timeLeft
     });
     this.commentary.tick(dt);
+
+    if (this.stadium.crowd) {
+      const wasWave = this._crowdWasWaving;
+      this.stadium.crowd.update(dt);
+      if (this.stadium.crowd.wave.active && !wasWave) CrowdAudio.reactWave();
+      this._crowdWasWaving = this.stadium.crowd.wave.active;
+      CrowdAudio.tick(dt, this.stadium.crowd.excitement);
+    }
+
     if (!this.setPiece && this.announceTimer <= 0) {
       const carrier = this.ball.owner || this.entities.find(e => e.controlled);
       this.commentary.maybeBuildUp(dt, carrier);
@@ -337,7 +355,11 @@ export class MatchEngine {
       e.mesh.position.z = THREE.MathUtils.clamp(ball.z, -GOAL_W / 2 + 0.5, GOAL_W / 2 - 0.5);
       if (dist < 2 && this.ball.owner !== e) {
         this.ball.owner = e;
-        if (Math.random() < 0.35) this.commentary.save(e);
+        if (Math.random() < 0.35) {
+          this.commentary.save(e);
+          this.stadium.crowd?.reactSave(e.isHome);
+          CrowdAudio.reactAttack(e.isHome);
+        }
         this._kickBall(e, 0.4, true);
       }
       return;
@@ -382,7 +404,11 @@ export class MatchEngine {
     this.ball.owner = null;
     this.ball.lastOwner = player;
     Audio.kick();
-    if (power > 0.55) this.commentary.shot(player);
+    if (power > 0.55) {
+      this.commentary.shot(player);
+      this.stadium.crowd?.reactAttack(player.isHome);
+      CrowdAudio.reactAttack(player.isHome);
+    }
   }
 
   _passBall(player) {
@@ -438,21 +464,22 @@ export class MatchEngine {
       this.onGoal('away', this.awayScore, this.homeScore);
       this.commentary.setContext({ homeScore: this.homeScore, awayScore: this.awayScore });
       this.commentary.goal(this.ball.lastOwner, true);
-      this._celebrate();
+      this._celebrate(false);
       this._kickoff();
     } else if (bx > PITCH_L / 2 - GOAL_DEPTH && this.announceTimer <= 0) {
       this.homeScore++;
       this.onGoal('home', this.homeScore, this.awayScore);
       this.commentary.setContext({ homeScore: this.homeScore, awayScore: this.awayScore });
       this.commentary.goal(this.ball.lastOwner, false);
-      this._celebrate();
+      this._celebrate(true);
       this._kickoff();
     }
   }
 
-  _celebrate() {
+  _celebrate(homeScored) {
     Audio.goal();
-    Audio.crowdCheer();
+    this.stadium.crowd?.reactGoal(homeScored);
+    CrowdAudio.reactGoal(homeScored);
     this.announceTimer = 2.5;
   }
 

@@ -1,4 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+import { CrowdSystem } from './crowd.js';
 
 const PITCH_W = 68;
 const PITCH_L = 105;
@@ -25,12 +26,13 @@ function makeGrassTexture() {
 }
 
 export class Stadium {
-  constructor(scene, loader) {
+  constructor(scene, loader, opts = {}) {
     this.scene = scene;
     this.group = new THREE.Group();
+    this.crowd = null;
     scene.add(this.group);
     this._buildPitch();
-    this._buildStadium(loader);
+    this._buildStadium(loader, opts);
     this._buildLights();
   }
 
@@ -118,11 +120,11 @@ export class Stadium {
     this.group.add(goalGroup);
   }
 
-  _buildStadium(loader) {
+  _buildStadium(loader, opts) {
     const crowdTex = loader.load('/assets/crowd-texture.jpg');
     crowdTex.wrapS = THREE.RepeatWrapping;
     crowdTex.wrapT = THREE.ClampToEdgeWrapping;
-    crowdTex.repeat.set(3, 1);
+    crowdTex.repeat.set(4, 1);
     crowdTex.colorSpace = THREE.SRGBColorSpace;
 
     const crowdMat = new THREE.MeshStandardMaterial({
@@ -131,29 +133,66 @@ export class Stadium {
       side: THREE.FrontSide
     });
 
-    const addCrowdWall = (w, h, x, y, z, rotY) => {
+    const standMat = new THREE.MeshStandardMaterial({ color: 0x2a3548, roughness: 0.85, metalness: 0.08 });
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x8899aa, roughness: 0.4, metalness: 0.5 });
+
+    // Oval bowl tiers wrapping the pitch
+    const tiers = 5;
+    for (let t = 0; t < tiers; t++) {
+      const rx = PITCH_L / 2 + 14 + t * 3.2;
+      const rz = PITCH_W / 2 + 11 + t * 2.6;
+      const y = 0.8 + t * 2;
+      const curve = new THREE.EllipseCurve(0, 0, rx, rz, 0, Math.PI * 2, false, 0);
+      const pts = curve.getPoints(72).map(p => new THREE.Vector3(p.x, y, p.y));
+      pts.push(pts[0].clone());
+      const rail = new THREE.Mesh(
+        new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 72, 0.12, 6, true),
+        railMat
+      );
+      this.group.add(rail);
+
+      for (let i = 0; i < 36; i++) {
+        const a0 = (i / 36) * Math.PI * 2;
+        const a1 = ((i + 1) / 36) * Math.PI * 2;
+        const x0 = Math.cos(a0) * rx;
+        const z0 = Math.sin(a0) * rz;
+        const x1 = Math.cos(a1) * rx;
+        const z1 = Math.sin(a1) * rz;
+        const mx = (x0 + x1) / 2;
+        const mz = (z0 + z1) / 2;
+        const segLen = Math.hypot(x1 - x0, z1 - z0);
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(segLen, 0.4, 2.4), standMat);
+        deck.position.set(mx, y - 0.3, mz);
+        deck.rotation.y = Math.atan2(z1 - z0, x1 - x0);
+        this.group.add(deck);
+      }
+    }
+
+    // Backdrop crowd texture on oval screens behind the 3D fans
+    const addCrowdScreen = (w, h, x, y, z, rotY) => {
       const wall = new THREE.Mesh(new THREE.PlaneGeometry(w, h), crowdMat);
       wall.position.set(x, y, z);
       wall.rotation.y = rotY;
       this.group.add(wall);
     };
 
-    // Sideline crowd — vertical walls facing the pitch
     [-1, 1].forEach((side) => {
-      const z = side * (PITCH_W / 2 + 6);
-      addCrowdWall(PITCH_L + 16, 11, 0, 5.5, z, side > 0 ? Math.PI : 0);
-      addCrowdWall(PITCH_L + 16, 8, 0, 13, z + side * 3, side > 0 ? Math.PI : 0);
+      const z = side * (PITCH_W / 2 + 18);
+      addCrowdScreen(PITCH_L + 28, 14, 0, 9, z, side > 0 ? Math.PI : 0);
+    });
+    [-1, 1].forEach((side) => {
+      const x = side * (PITCH_L / 2 + 18);
+      addCrowdScreen(PITCH_W + 22, 14, x, 9, 0, side > 0 ? -Math.PI / 2 : Math.PI / 2);
     });
 
-    // Behind-goal crowd
-    [-1, 1].forEach((side) => {
-      const x = side * (PITCH_L / 2 + 6);
-      addCrowdWall(PITCH_W + 12, 11, x, 5.5, 0, side > 0 ? -Math.PI / 2 : Math.PI / 2);
+    this.crowd = new CrowdSystem(this.group, {
+      homeColor: opts.homeColor || '#1565c0',
+      awayColor: opts.awayColor || '#c62828'
     });
 
     const roofMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.7, metalness: 0.3 });
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(PITCH_L + 32, 1.2, PITCH_W + 36), roofMat);
-    roof.position.y = 16;
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(PITCH_L + 42, 1.4, PITCH_W + 46), roofMat);
+    roof.position.y = 18;
     this.group.add(roof);
   }
 
