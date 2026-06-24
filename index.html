@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=11">
+  <link rel="stylesheet" href="/css/style.css?v=12">
 </head>
 <body>
   <div id="app">
@@ -137,6 +137,7 @@
         <span><kbd>Space</kbd> Shoot</span>
         <span><kbd>E</kbd> Pass</span>
         <span><kbd>Shift</kbd> Sprint</span>
+        <span><kbd>C</kbd> Slide tackle</span>
       </div>
       <div class="match-announce hidden" id="match-announce"></div>
       <div class="power-meter hidden" id="power-meter"><div id="power-fill"></div></div>
@@ -147,6 +148,7 @@
           <button class="act-btn" id="btn-pass" type="button">Pass</button>
           <button class="act-btn act-main" id="btn-shoot" type="button">Shoot</button>
           <button class="act-btn" id="btn-sprint" type="button">Sprint</button>
+          <button class="act-btn" id="btn-slide" type="button">Slide</button>
         </div>
       </div>
 
@@ -192,6 +194,7 @@
           <li><kbd>Space</kbd> / Shoot — Kick / Power shot (hold)</li>
           <li><kbd>E</kbd> / Pass — Short pass to nearest teammate</li>
           <li><kbd>Tab</kbd> — Switch controlled player</li>
+          <li><kbd>C</kbd> / Slide — Slide tackle to win the ball</li>
           <li>🔊 — Toggle live voice commentary during a match</li>
         </ul>
         <button class="btn-primary" id="btn-close-controls" type="button">Got it</button>
@@ -199,6 +202,6 @@
     </div>
   </div>
 
-  <script type="module" src="/js/main.js?v=11"></script>
+  <script type="module" src="/js/main.js?v=12"></script>
 </body>
 </html>

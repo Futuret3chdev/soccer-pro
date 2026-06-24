@@ -570,6 +570,14 @@ button { font-family: var(--font); cursor: pointer; border: none; }
   -webkit-tap-highlight-color: transparent;
   user-select: none;
 }
+#btn-slide {
+  background: rgba(255, 152, 0, 0.3);
+  border-color: rgba(255, 193, 7, 0.5);
+  grid-column: span 2;
+  width: 100%;
+  border-radius: 28px;
+  height: 44px;
+}
 .act-main {
   background: rgba(0, 230, 118, 0.35);
   border-color: var(--accent);

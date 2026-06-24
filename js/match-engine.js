@@ -11,6 +11,17 @@ const MATCH_SEC = 120;
 const GOAL_W = 7.32;
 const GOAL_DEPTH = 1.5;
 
+function lerpAngle(a, b, t) {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * Math.min(1, t);
+}
+
+function facingFromYaw(yaw) {
+  return new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+}
+
 export class MatchEngine {
   constructor(canvas, opts = {}) {
     this.canvas = canvas;
@@ -80,7 +91,7 @@ export class MatchEngine {
 
     this.entities = [];
     this.controlledIdx = 0;
-    this.input = { x: 0, z: 0, sprint: false, shoot: false, shootHold: false, pass: false, switch: false };
+    this.input = { x: 0, z: 0, sprint: false, shoot: false, shootHold: false, pass: false, switch: false, slide: false };
     this.power = 0;
     this.announceTimer = 0;
 
@@ -155,7 +166,7 @@ export class MatchEngine {
     const z = (slot.z - 0.5) * PITCH_W;
     mesh.position.set(x, 0, z);
     mesh.scale.setScalar(1.32);
-    if (!isHome) mesh.rotation.y = Math.PI;
+    mesh.rotation.y = isHome ? Math.PI / 2 : -Math.PI / 2;
     this.scene.add(mesh);
 
     const pace = (data.pace || 70) / 70;
@@ -172,7 +183,10 @@ export class MatchEngine {
       stamina: 100,
       kickTimer: 0,
       isGK: slot.role === 'GK',
-      controlled: controlled && !slot.role?.includes?.('GK') && slot.role !== 'GK'
+      controlled: controlled && !slot.role?.includes?.('GK') && slot.role !== 'GK',
+      sliding: false,
+      slideTimer: 0,
+      slideCooldown: 0
     };
     if (entity.controlled) this.controlledIdx = this.entities.length;
     this.entities.push(entity);
@@ -311,28 +325,44 @@ export class MatchEngine {
 
     const controlled = this.entities.find(e => e.controlled);
     if (controlled) {
-      const sp = controlled.speed * (this.input.sprint && controlled.stamina > 0 ? controlled.sprintMul : 1);
+      const sp = controlled.speed * (this.input.sprint && controlled.stamina > 0 && !controlled.sliding ? controlled.sprintMul : 1);
       const ix = this.input.x;
       const iz = this.input.z;
-      if (Math.abs(ix) > 0.05 || Math.abs(iz) > 0.05) {
-        controlled.vel.x = ix * sp;
-        controlled.vel.z = iz * sp;
-      }
-      if (this.input.sprint) controlled.stamina = Math.max(0, controlled.stamina - dt * 12);
-      else controlled.stamina = Math.min(100, controlled.stamina + dt * 6);
+      const moving = Math.hypot(ix, iz) > 0.05;
+      const accel = 1 - Math.exp(-14 * dt);
 
-      if (this.input.shootHold) this.power = Math.min(1, this.power + dt * 1.8);
-      if (this.input.shoot && controlled.kickTimer <= 0) {
+      if (controlled.sliding) {
+        // slide momentum handled in _updateEntity
+      } else if (moving) {
+        controlled.vel.x = THREE.MathUtils.lerp(controlled.vel.x, ix * sp, accel);
+        controlled.vel.z = THREE.MathUtils.lerp(controlled.vel.z, iz * sp, accel);
+        const targetYaw = Math.atan2(ix, iz);
+        controlled.mesh.rotation.y = lerpAngle(controlled.mesh.rotation.y, targetYaw, accel);
+      } else {
+        controlled.vel.x = THREE.MathUtils.lerp(controlled.vel.x, 0, 1 - Math.exp(-10 * dt));
+        controlled.vel.z = THREE.MathUtils.lerp(controlled.vel.z, 0, 1 - Math.exp(-10 * dt));
+      }
+
+      if (this.input.sprint && !controlled.sliding) controlled.stamina = Math.max(0, controlled.stamina - dt * 12);
+      else if (!controlled.sliding) controlled.stamina = Math.min(100, controlled.stamina + dt * 6);
+
+      if (this.input.slide && controlled.slideCooldown <= 0 && controlled.kickTimer <= 0 && !controlled.sliding) {
+        this._startSlide(controlled);
+      }
+
+      if (this.input.shootHold && !controlled.sliding) this.power = Math.min(1, this.power + dt * 1.8);
+      if (this.input.shoot && controlled.kickTimer <= 0 && !controlled.sliding) {
         this._kickBall(controlled, this.power || 0.5);
         this.power = 0;
         controlled.kickTimer = 0.35;
       }
-      if (this.input.pass && controlled.kickTimer <= 0) {
+      if (this.input.pass && controlled.kickTimer <= 0 && !controlled.sliding) {
         this._passBall(controlled);
         controlled.kickTimer = 0.3;
       }
       this.input.shoot = false;
       this.input.pass = false;
+      this.input.slide = false;
     }
 
     this.entities.forEach(e => this._updateEntity(e, dt, controlled));
@@ -343,8 +373,19 @@ export class MatchEngine {
 
   _updateEntity(e, dt, controlled) {
     if (e.kickTimer > 0) e.kickTimer -= dt;
+    if (e.slideCooldown > 0) e.slideCooldown -= dt;
 
-    if (!e.controlled) {
+    if (e.sliding) {
+      e.slideTimer -= dt;
+      if (e.slideTimer <= 0) {
+        e.sliding = false;
+        e.vel.multiplyScalar(0.25);
+        e.mesh.position.y = 0;
+      }
+      this._checkSlideTackle(e);
+    }
+
+    if (!e.controlled && !e.sliding) {
       this._aiMove(e, dt);
     }
 
@@ -354,14 +395,48 @@ export class MatchEngine {
     e.mesh.position.z = THREE.MathUtils.clamp(e.mesh.position.z, -PITCH_W / 2 + 1, PITCH_W / 2 - 1);
 
     const spd = Math.hypot(e.vel.x, e.vel.z);
-    if (spd > 0.3) {
-      e.mesh.rotation.y = Math.atan2(e.vel.x, e.vel.z);
+    if (!e.controlled && spd > 0.3) {
+      const targetYaw = Math.atan2(e.vel.x, e.vel.z);
+      e.mesh.rotation.y = lerpAngle(e.mesh.rotation.y, targetYaw, 1 - Math.exp(-8 * dt));
     }
-    animateHumanoid(e.mesh, spd, e.kickTimer > 0.15, dt);
+    animateHumanoid(e.mesh, spd, e.kickTimer > 0.15, dt, e.sliding);
 
-    if (!e.controlled) e.vel.multiplyScalar(0.85);
-    else if (Math.abs(e.vel.x) < 0.05 && Math.abs(e.vel.z) < 0.05) e.vel.set(0, 0, 0);
-    else e.vel.multiplyScalar(0.92);
+    if (!e.controlled && !e.sliding) e.vel.multiplyScalar(0.88);
+  }
+
+  _startSlide(player) {
+    player.sliding = true;
+    player.slideTimer = 0.6;
+    player.slideCooldown = 2;
+    const fwd = facingFromYaw(player.mesh.rotation.y);
+    const boost = player.speed * 2.4;
+    player.vel.copy(fwd.multiplyScalar(boost));
+    player.kickTimer = 0.5;
+    Audio.pass();
+  }
+
+  _checkSlideTackle(slider) {
+    const oppSide = !slider.isHome;
+    this.entities.forEach((opp) => {
+      if (opp.isHome !== oppSide || opp.isGK) return;
+      const d = slider.mesh.position.distanceTo(opp.mesh.position);
+      if (d > 1.6) return;
+      if (this.ball.owner === opp) {
+        this.ball.owner = null;
+        this.ball.vel.copy(slider.vel).multiplyScalar(0.35);
+        this.ball.lastOwner = slider;
+        opp.vel.multiplyScalar(0.15);
+        opp.kickTimer = 0.4;
+      }
+    });
+    const bd = slider.mesh.position.distanceTo(this.ball.mesh.position);
+    if (!this.ball.owner && bd < 1.1 && this.ball.vel.length() < 10) {
+      this.ball.owner = slider;
+    }
+    if (this.ball.owner && this.ball.owner.isHome !== slider.isHome && bd < 1.2) {
+      this.ball.owner = slider;
+      this.ball.vel.set(0, 0, 0);
+    }
   }
 
   _aiMove(e, dt) {
@@ -419,8 +494,17 @@ export class MatchEngine {
     if (gk) {
       dir.set(player.isHome ? 1 : -1, 0, (Math.random() - 0.5) * 0.5);
     } else {
+      dir.copy(facingFromYaw(player.mesh.rotation.y));
+      if (player.controlled && (Math.abs(this.input.x) > 0.12 || Math.abs(this.input.z) > 0.12)) {
+        const aim = new THREE.Vector3(this.input.x, 0, this.input.z).normalize();
+        dir.lerp(aim, 0.55).normalize();
+      }
       const goalX = player.isHome ? PITCH_L / 2 : -PITCH_L / 2;
-      dir.set(goalX - player.mesh.position.x, 0, (Math.random() - 0.5) * 6);
+      const toGoal = new THREE.Vector3(goalX - player.mesh.position.x, 0, -player.mesh.position.z * 0.12);
+      if (toGoal.lengthSq() > 0.5) {
+        toGoal.normalize();
+        dir.lerp(toGoal, 0.2).normalize();
+      }
     }
     dir.normalize();
     const force = 8 + power * 18;
@@ -585,32 +669,64 @@ export class MatchEngine {
       const slotX = (e.homeSlot.x - 0.5) * PITCH_L;
       const slotZ = (e.homeSlot.z - 0.5) * PITCH_W;
       e.mesh.position.set(slotX, 0, slotZ);
+      e.mesh.position.y = 0;
       e.vel.set(0, 0, 0);
+      e.sliding = false;
+      e.slideTimer = 0;
+      e.mesh.rotation.y = e.isHome ? Math.PI / 2 : -Math.PI / 2;
     });
   }
 
+  _getBallCarrier() {
+    if (this.ball.owner && !this.ball.owner.isGK) return this.ball.owner;
+    let nearest = null;
+    let bestD = Infinity;
+    this.entities.forEach((e) => {
+      if (e.isGK) return;
+      const d = e.mesh.position.distanceTo(this.ball.mesh.position);
+      if (d < bestD) { bestD = d; nearest = e; }
+    });
+    if (bestD < 5) return nearest;
+    return this.entities.find(e => e.controlled) || nearest;
+  }
+
   _getFocusPoint() {
-    const controlled = this.entities.find(e => e.controlled);
     const ball = this.ball.mesh.position;
-    if (!controlled) return { focus: ball.clone(), lead: new THREE.Vector3() };
-    const fp = controlled.mesh.position.clone().lerp(ball, 0.3);
-    const lead = controlled.vel.length() > 0.4
-      ? controlled.vel.clone().normalize().multiplyScalar(2.5)
-      : new THREE.Vector3();
-    return { focus: fp, lead };
+    const carrier = this._getBallCarrier();
+    const controlled = this.entities.find(e => e.controlled);
+    const focus = ball.clone();
+    if (carrier) {
+      focus.lerp(carrier.mesh.position, 0.62);
+    } else if (controlled) {
+      focus.lerp(controlled.mesh.position, 0.45);
+    }
+    let lead = new THREE.Vector3();
+    const mover = carrier || controlled;
+    if (mover && mover.vel.lengthSq() > 0.08) {
+      lead = mover.vel.clone().normalize().multiplyScalar(2);
+    } else if (this.ball.vel.lengthSq() > 1) {
+      lead = this.ball.vel.clone().normalize().multiplyScalar(1.5);
+    }
+    return { focus, lead, carrier };
   }
 
   _gameplayCameraTarget() {
-    const { focus, lead } = this._getFocusPoint();
-    const side = focus.x >= 0 ? -1 : 1;
+    const { focus, lead, carrier } = this._getFocusPoint();
+    let behindX = -1;
+    if (carrier) {
+      behindX = carrier.isHome ? -1 : 1;
+    } else if (Math.abs(this.ball.vel.x) > 0.5) {
+      behindX = this.ball.vel.x > 0 ? -1 : 1;
+    }
+    const zBias = THREE.MathUtils.clamp(focus.z * 0.12, -6, 6);
     return {
       pos: new THREE.Vector3(
-        focus.x + side * 9.5 + lead.x,
-        5.2,
-        focus.z * 0.15 + 6.5 + lead.z
+        focus.x + behindX * 12 + lead.x * 0.4,
+        7,
+        focus.z + zBias + 9 + lead.z * 0.3
       ),
-      look: new THREE.Vector3(focus.x + lead.x * 0.4, 1.45, focus.z + lead.z * 0.4),
-      fov: 42
+      look: new THREE.Vector3(focus.x + lead.x * 0.25, 1.55, focus.z + lead.z * 0.25),
+      fov: 45
     };
   }
 
@@ -695,12 +811,18 @@ export class MatchEngine {
 
   _updateGameplayCamera(dt) {
     const gp = this._gameplayCameraTarget();
-    const ease = 1 - Math.exp(-5 * dt);
+    const ease = 1 - Math.exp(-3.5 * dt);
     this._camPos.lerp(gp.pos, ease);
     this._camLook.lerp(gp.look, ease);
+    const maxDist = 22;
+    const toCam = this._camPos.clone().sub(this._camLook);
+    if (toCam.length() > maxDist) {
+      toCam.setLength(maxDist);
+      this._camPos.copy(this._camLook).add(toCam);
+    }
     this.camera.position.copy(this._camPos);
     this.camera.lookAt(this._camLook);
-    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, gp.fov, dt * 3);
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, gp.fov, dt * 2.5);
     this.camera.updateProjectionMatrix();
   }
 

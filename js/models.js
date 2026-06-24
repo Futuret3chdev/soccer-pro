@@ -139,23 +139,36 @@ export function createHumanoid(opts = {}) {
   return group;
 }
 
-export function animateHumanoid(mesh, speed, kicking = false, dt = 0.016) {
+export function animateHumanoid(mesh, speed, kicking = false, dt = 0.016, sliding = false) {
   const d = mesh.userData;
   if (!d) return;
-  d.animPhase += speed * dt * 12;
 
-  const swing = Math.sin(d.animPhase) * 0.55 * Math.min(speed / 6, 1);
-  d.legL.rotation.x = swing;
-  d.legR.rotation.x = -swing;
-  d.armL.rotation.x = -swing * 0.6;
-  d.armR.rotation.x = swing * 0.6;
+  if (sliding) {
+    mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, 0.22, 1 - Math.exp(-10 * dt));
+    d.torso.rotation.x = THREE.MathUtils.lerp(d.torso.rotation.x, -1.15, 0.2);
+    d.legL.rotation.x = 0.45;
+    d.legR.rotation.x = -0.15;
+    d.armL.rotation.x = -0.5;
+    d.armR.rotation.x = 0.35;
+    return;
+  }
+
+  mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, 0, 1 - Math.exp(-12 * dt));
+  const stride = Math.min(speed / 5.5, 1);
+  d.animPhase += speed * dt * 10;
+  const swing = Math.sin(d.animPhase) * 0.5 * stride;
+
+  d.legL.rotation.x = THREE.MathUtils.lerp(d.legL.rotation.x, swing, 0.25);
+  d.legR.rotation.x = THREE.MathUtils.lerp(d.legR.rotation.x, -swing, 0.25);
+  d.armL.rotation.x = THREE.MathUtils.lerp(d.armL.rotation.x, -swing * 0.55, 0.25);
+  d.armR.rotation.x = THREE.MathUtils.lerp(d.armR.rotation.x, swing * 0.55, 0.25);
 
   if (kicking) {
     d.legR.rotation.x = -1.4;
     d.torso.rotation.x = 0.25;
     d.armL.rotation.z = -0.5;
   } else {
-    d.torso.rotation.x *= 0.85;
-    d.armL.rotation.z *= 0.85;
+    d.torso.rotation.x *= 0.88;
+    d.armL.rotation.z *= 0.88;
   }
 }
