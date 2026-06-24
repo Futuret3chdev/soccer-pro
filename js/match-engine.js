@@ -281,38 +281,51 @@ export class MatchEngine {
 
   _createControlRing() {
     const group = new THREE.Group();
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0x3dff6e,
-      transparent: true,
-      opacity: 0.9,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    });
-    const glowMat = ringMat.clone();
-    glowMat.opacity = 0.32;
+    const mkRing = (inner, outer, color, opacity, order) => {
+      const m = new THREE.Mesh(
+        new THREE.RingGeometry(inner, outer, 44),
+        new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity,
+          side: THREE.DoubleSide,
+          depthWrite: false
+        })
+      );
+      m.rotation.x = -Math.PI / 2;
+      m.position.y = 0.11;
+      m.renderOrder = order;
+      return m;
+    };
 
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.68, 40), ringMat);
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.07;
-    ring.renderOrder = 10;
-
-    const glow = new THREE.Mesh(new THREE.RingGeometry(0.68, 0.9, 40), glowMat);
-    glow.rotation.x = -Math.PI / 2;
-    glow.position.y = 0.065;
-    glow.renderOrder = 9;
+    const shadow = mkRing(0.42, 1.02, 0x000000, 0.72, 8);
+    const glow = mkRing(0.62, 0.92, 0xffee58, 0.55, 9);
+    const ring = mkRing(0.5, 0.74, 0xffffff, 1, 10);
+    const inner = mkRing(0.34, 0.44, 0x00e5ff, 0.95, 11);
 
     const arrow = new THREE.Mesh(
-      new THREE.ConeGeometry(0.12, 0.22, 4),
-      new THREE.MeshBasicMaterial({ color: 0x3dff6e, transparent: true, opacity: 0.75, depthWrite: false })
+      new THREE.ConeGeometry(0.14, 0.26, 4),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false })
     );
     arrow.rotation.x = Math.PI / 2;
-    arrow.position.set(0, 0.08, -0.55);
-    arrow.renderOrder = 11;
+    arrow.position.set(0, 0.12, -0.58);
+    arrow.renderOrder = 12;
 
-    group.add(glow, ring, arrow);
+    const arrowShadow = arrow.clone();
+    arrowShadow.material = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false
+    });
+    arrowShadow.scale.set(1.18, 1.18, 1.18);
+    arrowShadow.position.set(0, 0.115, -0.58);
+    arrowShadow.renderOrder = 11;
+
+    group.add(shadow, glow, ring, inner, arrowShadow, arrow);
     group.visible = false;
     this.scene.add(group);
-    this.controlRing = { group, ring, glow, arrow, pulse: 0 };
+    this.controlRing = { group, ring, glow, inner, shadow, arrow, pulse: 0 };
     const ctrl = this.entities.find(e => e.controlled);
     if (ctrl) this._snapControlRing(ctrl);
   }
@@ -343,10 +356,14 @@ export class MatchEngine {
     this.controlRing.group.rotation.y = lerpAngle(this.controlRing.group.rotation.y, targetYaw, 1 - Math.exp(-12 * dt));
 
     this.controlRing.pulse += dt * 3.2;
-    const pulse = 1 + Math.sin(this.controlRing.pulse) * 0.07;
+    const pulse = 1 + Math.sin(this.controlRing.pulse) * 0.08;
     this.controlRing.ring.scale.set(pulse, pulse, 1);
-    this.controlRing.glow.scale.set(pulse * 1.04, pulse * 1.04, 1);
-    this.controlRing.ring.material.opacity = 0.78 + Math.sin(this.controlRing.pulse * 1.4) * 0.12;
+    this.controlRing.glow.scale.set(pulse * 1.06, pulse * 1.06, 1);
+    this.controlRing.inner.scale.set(pulse * 0.96, pulse * 0.96, 1);
+    this.controlRing.shadow.scale.set(pulse * 1.02, pulse * 1.02, 1);
+    const flicker = 0.88 + Math.sin(this.controlRing.pulse * 1.4) * 0.12;
+    this.controlRing.ring.material.opacity = flicker;
+    this.controlRing.inner.material.opacity = 0.82 + Math.sin(this.controlRing.pulse * 2) * 0.18;
   }
 
   _nearestHomeToBall(maxDist = Infinity) {
