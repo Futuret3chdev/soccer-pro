@@ -11,7 +11,7 @@ const MATCH_SEC = 120;
 const GOAL_W = 7.32;
 const GOAL_DEPTH = 1.5;
 const PITCH_MARGIN = 0.55;
-const BALL_RADIUS = 0.19;
+const BALL_RADIUS = 0.21;
 
 function lerpAngle(a, b, t) {
   let d = b - a;
@@ -61,7 +61,7 @@ export class MatchEngine {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.22;
+    this.renderer.toneMappingExposure = 1.05;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x142238);
@@ -123,10 +123,7 @@ export class MatchEngine {
     c.height = size;
     const ctx = c.getContext('2d');
 
-    const grad = ctx.createRadialGradient(size * 0.45, size * 0.4, 0, size * 0.5, size * 0.5, size * 0.7);
-    grad.addColorStop(0, '#ffffff');
-    grad.addColorStop(1, '#e6e6e6');
-    ctx.fillStyle = grad;
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, size, size);
 
     const drawPent = (cx, cy, r, rot = 0) => {
@@ -184,18 +181,44 @@ export class MatchEngine {
     return tex;
   }
 
+  _updateBallShadow() {
+    const b = this.ball;
+    if (!b?.shadow) return;
+    const p = b.mesh.position;
+    b.shadow.position.set(p.x, 0.06, p.z);
+    b.shadow.material.opacity = 0.45 + Math.min(0.2, b.vel.length() * 0.02);
+  }
+
   _createBall() {
     const geo = new THREE.SphereGeometry(BALL_RADIUS, 36, 36);
     const mat = new THREE.MeshStandardMaterial({
       map: this._makeBallTexture(),
-      roughness: 0.42,
-      metalness: 0.03
+      roughness: 0.35,
+      metalness: 0.02,
+      emissive: 0x222222,
+      emissiveIntensity: 0.06
     });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;
     mesh.position.y = BALL_RADIUS;
+
+    const shadow = new THREE.Mesh(
+      new THREE.RingGeometry(BALL_RADIUS * 0.7, BALL_RADIUS * 1.45, 28),
+      new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false
+      })
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.06;
+    shadow.renderOrder = 5;
+    this.scene.add(shadow);
+
     return {
       mesh,
+      shadow,
       vel: new THREE.Vector3(),
       owner: null,
       lastOwner: null
@@ -876,12 +899,14 @@ export class MatchEngine {
       const fwd = new THREE.Vector3(Math.sin(b.owner.mesh.rotation.y), 0, Math.cos(b.owner.mesh.rotation.y));
       b.mesh.position.set(o.x + fwd.x * 0.5, BALL_RADIUS, o.z + fwd.z * 0.5);
       b.vel.set(0, 0, 0);
+      this._updateBallShadow();
       return;
     }
 
     b.mesh.position.addScaledVector(b.vel, dt);
     b.vel.multiplyScalar(0.985);
     b.mesh.position.y = BALL_RADIUS + Math.max(0, b.vel.length() * 0.01);
+    this._updateBallShadow();
 
     this._checkGoals();
     this._checkOutOfPlay();

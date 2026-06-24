@@ -10,22 +10,21 @@ function makeGrassTexture() {
   c.height = 1024;
   const ctx = c.getContext('2d');
 
-  for (let row = 0; row < 32; row++) {
-    for (let col = 0; col < 32; col++) {
-      const stripe = col % 2 === 0;
-      const hue = stripe ? '#5fe070' : '#2f9e42';
-      ctx.fillStyle = hue;
-      ctx.fillRect(col * 32, row * 32, 32, 32);
-    }
+  ctx.fillStyle = '#267a34';
+  ctx.fillRect(0, 0, 1024, 1024);
+
+  for (let col = 0; col < 16; col++) {
+    const stripe = col % 2 === 0;
+    ctx.fillStyle = stripe ? '#2f8f3e' : '#1e6b2c';
+    ctx.fillRect(col * 64, 0, 64, 1024);
   }
 
-  ctx.globalAlpha = 0.12;
-  for (let i = 0; i < 5000; i++) {
+  ctx.globalAlpha = 0.08;
+  for (let i = 0; i < 3000; i++) {
     const x = Math.random() * 1024;
     const y = Math.random() * 1024;
-    const shade = 30 + Math.random() * 25;
-    ctx.fillStyle = `rgb(${shade - 8},${shade + 95},${shade + 5})`;
-    ctx.fillRect(x, y, 1 + Math.random(), 2 + Math.random() * 2);
+    ctx.fillStyle = `rgb(${20 + Math.random() * 15},${90 + Math.random() * 40},${25 + Math.random() * 15})`;
+    ctx.fillRect(x, y, 1, 2);
   }
   ctx.globalAlpha = 1;
 
@@ -79,13 +78,9 @@ export class Stadium {
   _buildPitch(loader, opts) {
     const grassTex = makeGrassTexture();
     const pitchGeo = new THREE.PlaneGeometry(PITCH_L, PITCH_W);
-    const pitchMat = new THREE.MeshStandardMaterial({
+    const pitchMat = new THREE.MeshLambertMaterial({
       map: grassTex,
-      roughness: 0.78,
-      metalness: 0.01,
-      color: 0x9ef5a8,
-      emissive: 0x143818,
-      emissiveIntensity: 0.08
+      color: 0xffffff
     });
     const pitch = new THREE.Mesh(pitchGeo, pitchMat);
     pitch.rotation.x = -Math.PI / 2;
@@ -342,11 +337,11 @@ export class Stadium {
   }
 
   _buildLights() {
-    this.scene.add(new THREE.AmbientLight(0x607090, 0.42));
-    this.scene.add(new THREE.HemisphereLight(0xb8c8e8, 0x2a9e3c, 0.55));
+    this.scene.add(new THREE.AmbientLight(0x8aaa90, 0.55));
+    this.scene.add(new THREE.HemisphereLight(0x9eb8d8, 0x2d7a38, 0.35));
 
-    this.sun = new THREE.DirectionalLight(0xfff2d6, 2.2);
-    this.sun.position.set(35, 52, 22);
+    this.sun = new THREE.DirectionalLight(0xfff6e8, 1.15);
+    this.sun.position.set(40, 60, 30);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.camera.near = 5;
@@ -358,10 +353,10 @@ export class Stadium {
     this.sun.shadow.bias = -0.0004;
     this.scene.add(this.sun);
 
-    [[-32, 26, -20], [32, 26, 20], [-32, 26, 20], [32, 26, -20]].forEach(([x, y, z]) => {
-      const spot = new THREE.SpotLight(0xfff8e8, 140, 240, Math.PI / 4.2, 0.45, 1);
+    [[-48, 38, 0], [48, 38, 0], [0, 38, -32], [0, 38, 32]].forEach(([x, y, z]) => {
+      const spot = new THREE.SpotLight(0xfff4e0, 28, 300, Math.PI / 3.2, 0.65, 2);
       spot.position.set(x, y, z);
-      spot.target.position.set(0, 0, 0);
+      spot.target.position.set(x * 0.15, 0, z * 0.15);
       this.scene.add(spot);
       this.scene.add(spot.target);
     });
