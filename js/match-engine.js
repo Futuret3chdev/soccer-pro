@@ -312,6 +312,26 @@ export class MatchEngine {
     else if (p.z < -maxZ) { p.z = -maxZ; if (e.vel.z < 0) e.vel.z = 0; }
   }
 
+  _ballInGoalMouth(pz) {
+    return Math.abs(pz) <= GOAL_W / 2 + 0.12;
+  }
+
+  _ballPastGoalLine(px) {
+    const line = PITCH_L / 2;
+    return px > line - 0.15 || px < -(line - 0.15);
+  }
+
+  _ballInGoalZone(px, pz) {
+    return this._ballInGoalMouth(pz) && this._ballPastGoalLine(px);
+  }
+
+  _shotHeadingIntoGoal(vel, pos, defendHome) {
+    if (!this._ballInGoalMouth(pos.z)) return false;
+    const line = PITCH_L / 2;
+    if (defendHome) return vel.x < -1.2 && pos.x < line + 6;
+    return vel.x > 1.2 && pos.x > line - 6;
+  }
+
   start() {
     this.resize();
     this.running = true;
@@ -470,7 +490,6 @@ export class MatchEngine {
 
     this.entities.forEach(e => this._updateEntity(e, dt, controlled));
     this._updateBall(dt);
-    this._checkGoals();
     this._updateGameplayCamera(dt);
   }
 
@@ -585,7 +604,25 @@ export class MatchEngine {
       const goalX = e.isHome ? homeGoalX : awayGoalX;
       e.mesh.position.x = goalX + (e.isHome ? 2 : -2);
       e.mesh.position.z = THREE.MathUtils.clamp(ball.z, -GOAL_W / 2 + 0.5, GOAL_W / 2 - 0.5);
-      if (dist < 2 && this.ball.owner !== e) {
+      if (this._ballInGoalZone(ball.x, ball.z)) return;
+
+      const speed = this.ball.vel.length();
+      const shotIn = this._shotHeadingIntoGoal(this.ball.vel, ball, e.isHome);
+
+      if (dist < 2.4 && this.ball.owner !== e) {
+        if (shotIn) {
+          if (speed > 7 && Math.random() < 0.22) {
+            this.ball.vel.x *= -0.35;
+            this.ball.vel.z += (Math.random() - 0.5) * 4;
+            this.ball.vel.multiplyScalar(0.55);
+            this.commentary.save(e);
+            this.stadium.crowd?.reactSave(e.isHome);
+            CrowdAudio.reactAttack(e.isHome);
+            if (!e.isHome) CrowdAudio.ooh();
+          }
+          return;
+        }
+        if (speed > 13) return;
         this.ball.owner = e;
         if (Math.random() < 0.35) {
           this.commentary.save(e);
@@ -683,12 +720,14 @@ export class MatchEngine {
     b.vel.multiplyScalar(0.985);
     b.mesh.position.y = 0.11 + Math.max(0, b.vel.length() * 0.008);
 
+    this._checkGoals();
     this._checkOutOfPlay();
 
     const prevOwner = b.owner;
     this.entities.forEach(e => {
       const d = e.mesh.position.distanceTo(b.mesh.position);
       if (d < 1.2 && b.vel.length() < 9) {
+        if (e.isGK && this._shotHeadingIntoGoal(b.vel, b.mesh.position, e.isHome)) return;
         b.owner = e;
       }
     });
@@ -705,17 +744,20 @@ export class MatchEngine {
   }
 
   _checkGoals() {
+    if (this.announceTimer > 0) return;
     const bx = this.ball.mesh.position.x;
     const bz = this.ball.mesh.position.z;
-    if (Math.abs(bz) > GOAL_W / 2) return;
-    if (bx < -PITCH_L / 2 + GOAL_DEPTH && this.announceTimer <= 0) {
+    if (!this._ballInGoalMouth(bz)) return;
+
+    const line = PITCH_L / 2;
+    if (bx < -(line - 0.12)) {
       this.awayScore++;
       this.onGoal('away', this.awayScore, this.homeScore);
       this.commentary.setContext({ homeScore: this.homeScore, awayScore: this.awayScore });
       this.commentary.goal(this.ball.lastOwner, true);
       this._celebrate(false);
       this._kickoff();
-    } else if (bx > PITCH_L / 2 - GOAL_DEPTH && this.announceTimer <= 0) {
+    } else if (bx > line - 0.12) {
       this.homeScore++;
       this.onGoal('home', this.homeScore, this.awayScore);
       this.commentary.setContext({ homeScore: this.homeScore, awayScore: this.awayScore });
@@ -741,12 +783,10 @@ export class MatchEngine {
     const halfW = PITCH_W / 2;
     const px = b.mesh.position.x;
     const pz = b.mesh.position.z;
-    const inGoalMouth = Math.abs(pz) <= GOAL_W / 2 + 0.2;
-
     const outZ = Math.abs(pz) > halfW + 0.08;
     const outX = Math.abs(px) > halfL + 0.08;
     if (!outX && !outZ) return;
-    if (outX && inGoalMouth) return;
+    if (this._ballInGoalMouth(pz) && outX) return;
 
     this._awardThrowIn(px, pz);
   }
