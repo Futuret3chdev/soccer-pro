@@ -11,6 +11,7 @@ const MATCH_SEC = 120;
 const GOAL_W = 7.32;
 const GOAL_DEPTH = 1.5;
 const PITCH_MARGIN = 0.55;
+const BALL_RADIUS = 0.19;
 
 function lerpAngle(a, b, t) {
   let d = b - a;
@@ -116,51 +117,83 @@ export class MatchEngine {
   }
 
   _makeBallTexture() {
+    const size = 1024;
     const c = document.createElement('canvas');
-    c.width = 512;
-    c.height = 256;
+    c.width = size;
+    c.height = size;
     const ctx = c.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, 512, 256);
-    const drawHex = (cx, cy, r, fill, stroke) => {
+
+    const grad = ctx.createRadialGradient(size * 0.45, size * 0.4, 0, size * 0.5, size * 0.5, size * 0.7);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(1, '#e6e6e6');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+
+    const drawPent = (cx, cy, r, rot = 0) => {
       ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const a = (Math.PI / 3) * i - Math.PI / 6;
+      for (let i = 0; i < 5; i++) {
+        const a = rot + (Math.PI * 2 * i) / 5 - Math.PI / 2;
         const x = cx + Math.cos(a) * r;
         const y = cy + Math.sin(a) * r;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.fillStyle = fill;
-      ctx.fill();
-      if (stroke) {
-        ctx.strokeStyle = stroke;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
     };
-    const patches = [
-      [128, 64, 22, '#1a1a1a'], [256, 64, 22, '#1a1a1a'], [384, 64, 22, '#1a1a1a'],
-      [64, 128, 22, '#1a1a1a'], [192, 128, 22, '#1a1a1a'], [320, 128, 22, '#1a1a1a'], [448, 128, 22, '#1a1a1a'],
-      [128, 192, 22, '#1a1a1a'], [256, 192, 22, '#1a1a1a'], [384, 192, 22, '#1a1a1a']
+
+    const pentagons = [
+      [512, 512, 88, 0],
+      [512, 220, 68, 0.35],
+      [512, 804, 68, -0.25],
+      [250, 360, 62, 0.9],
+      [774, 360, 62, -0.6],
+      [250, 664, 62, 0.2],
+      [774, 664, 62, -0.9],
+      [140, 512, 54, 0.5],
+      [884, 512, 54, -0.4],
+      [360, 160, 50, 0.1],
+      [664, 160, 50, -0.7],
+      [360, 864, 50, 0.6],
+      [664, 864, 50, -0.2]
     ];
-    patches.forEach(([x, y, r, col]) => drawHex(x, y, r, col, '#333'));
+
+    pentagons.forEach(([cx, cy, r, rot]) => {
+      drawPent(cx, cy, r, rot);
+      const pg = ctx.createRadialGradient(cx - r * 0.2, cy - r * 0.2, 0, cx, cy, r);
+      pg.addColorStop(0, '#2a2a2a');
+      pg.addColorStop(1, '#0a0a0a');
+      ctx.fillStyle = pg;
+      ctx.fill();
+      ctx.strokeStyle = '#1f1f1f';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    });
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 18; i++) {
+      const a = (Math.PI * 2 * i) / 18;
+      ctx.beginPath();
+      ctx.moveTo(512, 512);
+      ctx.lineTo(512 + Math.cos(a) * 480, 512 + Math.sin(a) * 480);
+      ctx.stroke();
+    }
+
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   }
 
   _createBall() {
-    const geo = new THREE.SphereGeometry(0.11, 28, 28);
+    const geo = new THREE.SphereGeometry(BALL_RADIUS, 36, 36);
     const mat = new THREE.MeshStandardMaterial({
       map: this._makeBallTexture(),
-      roughness: 0.38,
-      metalness: 0.04
+      roughness: 0.42,
+      metalness: 0.03
     });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;
-    mesh.position.y = 0.11;
+    mesh.position.y = BALL_RADIUS;
     return {
       mesh,
       vel: new THREE.Vector3(),
@@ -190,7 +223,7 @@ export class MatchEngine {
       this._addPlayer(p, slot, false, i, false);
     });
 
-    this.ball.mesh.position.set(0, 0.11, 0);
+    this.ball.mesh.position.set(0, BALL_RADIUS, 0);
     this.ball.vel.set(0, 0, 0);
     this.ball.owner = null;
   }
@@ -841,14 +874,14 @@ export class MatchEngine {
     if (b.owner) {
       const o = b.owner.mesh.position;
       const fwd = new THREE.Vector3(Math.sin(b.owner.mesh.rotation.y), 0, Math.cos(b.owner.mesh.rotation.y));
-      b.mesh.position.set(o.x + fwd.x * 0.45, 0.11, o.z + fwd.z * 0.45);
+      b.mesh.position.set(o.x + fwd.x * 0.5, BALL_RADIUS, o.z + fwd.z * 0.5);
       b.vel.set(0, 0, 0);
       return;
     }
 
     b.mesh.position.addScaledVector(b.vel, dt);
     b.vel.multiplyScalar(0.985);
-    b.mesh.position.y = 0.11 + Math.max(0, b.vel.length() * 0.008);
+    b.mesh.position.y = BALL_RADIUS + Math.max(0, b.vel.length() * 0.01);
 
     this._checkGoals();
     this._checkOutOfPlay();
@@ -929,7 +962,7 @@ export class MatchEngine {
     if (Math.abs(z) >= PITCH_W / 2) z = Math.sign(z || 1) * (PITCH_W / 2 - 0.35);
     if (Math.abs(px) >= PITCH_L / 2) x = Math.sign(px || 1) * (PITCH_L / 2 - 0.35);
 
-    this.ball.mesh.position.set(x, 0.11, z);
+    this.ball.mesh.position.set(x, BALL_RADIUS, z);
     this.ball.vel.set(0, 0, 0);
     this.ball.owner = null;
 
@@ -971,7 +1004,7 @@ export class MatchEngine {
     toCenter.normalize();
     if (toCenter.lengthSq() < 0.01) toCenter.set(p.isHome ? 1 : -1, 0, 0);
 
-    this.ball.mesh.position.set(cx, 0.11, cz);
+    this.ball.mesh.position.set(cx, BALL_RADIUS, cz);
     this.ball.vel.copy(toCenter.multiplyScalar(11));
     this.ball.lastOwner = p;
     this.setPiece = null;
@@ -980,7 +1013,7 @@ export class MatchEngine {
   }
 
   _kickoff() {
-    this.ball.mesh.position.set(0, 0.11, 0);
+    this.ball.mesh.position.set(0, BALL_RADIUS, 0);
     this.ball.vel.set(0, 0, 0);
     this.ball.owner = null;
     this.manualSwitchTimer = 0;
