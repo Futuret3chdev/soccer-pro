@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { Stadium, PITCH_W, PITCH_L } from './stadium.js';
-import { createHumanoid, animateHumanoid } from './models.js';
+import { preloadPlayerModels, createPlayer, animatePlayer } from './player-models.js';
 import { FORMATIONS, genSquad } from './data.js';
 import { Audio } from './audio.js';
 import { CrowdAudio } from './crowd-audio.js';
@@ -107,7 +107,7 @@ export class MatchEngine {
     this.manualSwitchTimer = 0;
     this.passTarget = null;
 
-    this._spawnTeams();
+    this._teamsReady = false;
     this._createControlRing();
     this._lastW = 0;
     this._lastH = 0;
@@ -116,6 +116,15 @@ export class MatchEngine {
     window.addEventListener('resize', () => this.resize());
     this.camera.position.set(0, 28, 55);
     this.camera.lookAt(0, 0, 0);
+  }
+
+  async prepare() {
+    if (this._teamsReady) return;
+    await preloadPlayerModels();
+    this._spawnTeams();
+    this._teamsReady = true;
+    this.resize();
+    this._render();
   }
 
   resize() {
@@ -261,7 +270,7 @@ export class MatchEngine {
   _addPlayer(data, slot, isHome, idx, controlled = false) {
     const color = isHome ? this.homeColor : this.awayColor;
     const num = isHome ? idx + 1 : idx + 10;
-    const mesh = createHumanoid({
+    const mesh = createPlayer({
       jerseyColor: color,
       shortsColor: isHome ? 0xffffff : 0x212121,
       skinTone: data.skin ?? 0.5,
@@ -273,8 +282,8 @@ export class MatchEngine {
 
     const x = (slot.x - 0.5) * PITCH_L;
     const z = (slot.z - 0.5) * PITCH_W;
-    mesh.position.set(x, 0, z);
-    mesh.scale.setScalar(1.42);
+    const gy = mesh.userData?.groundOffset || 0;
+    mesh.position.set(x, gy, z);
     mesh.rotation.y = isHome ? Math.PI / 2 : -Math.PI / 2;
     this.scene.add(mesh);
 
@@ -761,7 +770,7 @@ export class MatchEngine {
       const targetYaw = Math.atan2(e.vel.x, e.vel.z);
       e.mesh.rotation.y = lerpAngle(e.mesh.rotation.y, targetYaw, 1 - Math.exp(-8 * dt));
     }
-    animateHumanoid(e.mesh, spd, e.kickTimer > 0.15, dt, e.sliding);
+    animatePlayer(e.mesh, spd, e.kickTimer > 0.15, dt, e.sliding);
 
     if (!e.controlled && !e.sliding) e.vel.multiplyScalar(0.88);
   }
@@ -1076,7 +1085,7 @@ export class MatchEngine {
     });
 
     if (nearest) {
-      nearest.mesh.position.set(x, 0, z);
+      nearest.mesh.position.set(x, nearest.mesh.userData?.groundOffset || 0, z);
       const pushZ = z > 0 ? -1.2 : 1.2;
       nearest.mesh.position.z = z + (Math.abs(z) >= PITCH_W / 2 - 0.5 ? pushZ : pushZ * 0.25);
       this.setPiece = { player: nearest, timer: 1.8 };
@@ -1123,8 +1132,8 @@ export class MatchEngine {
     this.entities.forEach(e => {
       const slotX = (e.homeSlot.x - 0.5) * PITCH_L;
       const slotZ = (e.homeSlot.z - 0.5) * PITCH_W;
-      e.mesh.position.set(slotX, 0, slotZ);
-      e.mesh.position.y = 0;
+      e.mesh.position.set(slotX, e.mesh.userData?.groundOffset || 0, slotZ);
+      e.mesh.position.y = e.mesh.userData?.groundOffset || 0;
       e.vel.set(0, 0, 0);
       e.sliding = false;
       e.slidePhase = null;

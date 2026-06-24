@@ -106,6 +106,8 @@ async function startMatch(opts) {
       onEnd: (score) => endMatch(score)
     });
 
+    if (loadMsg) loadMsg.textContent = 'Loading players…';
+    await engine.prepare();
     loadMsg?.classList.add('hidden');
     $('hud-home-name').textContent = career.clubName;
     $('hud-away-name').textContent = opts.opponent || 'City FC';
