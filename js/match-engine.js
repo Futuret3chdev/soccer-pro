@@ -121,7 +121,10 @@ export class MatchEngine {
 
   async prepare() {
     if (this._teamsReady) return;
-    await preloadPlayerModels();
+    await Promise.all([
+      preloadPlayerModels(),
+      this.stadium.assetsReady
+    ]);
     this._spawnTeams();
     this._teamsReady = true;
     this.resize();

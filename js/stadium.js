@@ -1,6 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { CrowdSystem } from './crowd.js';
 import { PITCH_W, PITCH_L, standRailY, standTierRadii, STAND_TIER_COUNT } from './stands.js';
+import { loadStadiumGltf } from './stadium-gltf.js';
 
 export { PITCH_W, PITCH_L };
 
@@ -74,11 +75,38 @@ export class Stadium {
     this.group = new THREE.Group();
     this.crowd = null;
     this.sun = null;
+    this._proceduralShell = [];
+    this._gltfShell = null;
+    this._opts = opts;
     scene.add(this.group);
     this._applySky(scene);
     this._buildPitch(opts);
     this._buildStadium(loader, opts);
     this._buildLights();
+    this.assetsReady = this._loadExternalAssets();
+  }
+
+  async _loadExternalAssets() {
+    try {
+      this._gltfShell = await loadStadiumGltf(this.group);
+      this._setProceduralShellVisible(false);
+    } catch (err) {
+      console.warn('Stadium GLTF unavailable, using procedural bowl', err);
+    }
+    if (this.crowd) {
+      await this.crowd.loadExternalAssets();
+    }
+  }
+
+  _trackProcedural(mesh) {
+    this._proceduralShell.push(mesh);
+    return mesh;
+  }
+
+  _setProceduralShellVisible(visible) {
+    this._proceduralShell.forEach((mesh) => {
+      mesh.visible = visible;
+    });
   }
 
   _applySky(scene) {
@@ -314,7 +342,7 @@ export class Stadium {
         new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 112, 0.09, 6, true),
         railMat
       );
-      this.group.add(rail);
+      this.group.add(this._trackProcedural(rail));
 
       for (let i = 0; i < segments; i++) {
         const a0 = (i / segments) * Math.PI * 2;
@@ -334,18 +362,18 @@ export class Stadium {
         const deck = new THREE.Mesh(new THREE.BoxGeometry(segLen, deckH, depth), seatMat);
         deck.position.set(mx, y - 0.2, mz);
         deck.rotation.y = yaw;
-        this.group.add(deck);
+        this.group.add(this._trackProcedural(deck));
 
         const riser = new THREE.Mesh(new THREE.BoxGeometry(segLen, 0.18, depth + 0.12), concreteMat);
         riser.position.set(mx * 0.985, y - 0.52, mz * 0.985);
         riser.rotation.y = yaw;
-        this.group.add(riser);
+        this.group.add(this._trackProcedural(riser));
 
         if (t === 0) {
           const barrier = new THREE.Mesh(new THREE.BoxGeometry(segLen, 1.05, 0.14), concreteMat);
           barrier.position.set(mx * 0.975, y + 0.35, mz * 0.975);
           barrier.rotation.y = yaw;
-          this.group.add(barrier);
+          this.group.add(this._trackProcedural(barrier));
         }
       }
 
@@ -359,7 +387,7 @@ export class Stadium {
         });
         const vip = new THREE.Mesh(new THREE.BoxGeometry(PITCH_L * 0.38, 1.2, 4.2), vipMat);
         vip.position.set(0, y + 0.6, -rz * inset * 0.88);
-        this.group.add(vip);
+        this.group.add(this._trackProcedural(vip));
       }
     }
   }
@@ -401,7 +429,7 @@ export class Stadium {
         panel.rotation.order = 'YXZ';
         panel.rotation.y = yaw + Math.PI / 2;
         panel.rotation.x = -0.28;
-        this.group.add(panel);
+        this.group.add(this._trackProcedural(panel));
       }
     }
 
@@ -414,7 +442,7 @@ export class Stadium {
         new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.14, 6, false),
         trussMat
       );
-      this.group.add(truss);
+      this.group.add(this._trackProcedural(truss));
     }
   }
 

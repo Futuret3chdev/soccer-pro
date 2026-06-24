@@ -1,6 +1,8 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { PITCH_W, PITCH_L, standDeckTop, standRailY, standTierRadii, STAND_TIER_COUNT } from './stands.js';
 import { makeCrowdPanoramaTexture } from './crowd-textures.js';
+import { createCrowdVideoTexture } from './crowd-video.js';
+import { loadCrowdGltf } from './crowd-gltf.js';
 
 const FAN_BODY_HALF = 0.34;
 
@@ -105,13 +107,45 @@ export class CrowdSystem {
     this.flareCooldown = 4;
     this._dummy = new THREE.Object3D();
     this._color = new THREE.Color();
-
+    this._opts = opts;
+    this._videoCrowd = null;
+    this._gltfCrowd = null;
 
     this._buildStandCrowdPanels();
     this._buildOvalCrowd();
     this._buildFlags();
     this._buildBanners();
     this._buildFlareSlots();
+  }
+
+  async loadExternalAssets() {
+    try {
+      const { texture, video } = createCrowdVideoTexture();
+      this._videoCrowd = { texture, video };
+      this._applyVideoCrowdPanels(texture);
+    } catch (err) {
+      console.warn('Crowd video texture unavailable', err);
+    }
+    try {
+      this._gltfCrowd = await loadCrowdGltf(this.group, {
+        homeColor: this._opts.homeColor || '#1565c0',
+        awayColor: this._opts.awayColor || '#c62828'
+      });
+    } catch (err) {
+      console.warn('Crowd GLTF clusters unavailable', err);
+    }
+  }
+
+  _applyVideoCrowdPanels(videoTex) {
+    this.backdrops.forEach((bd) => {
+      if (bd.tier > 1) return;
+      const mat = bd.mat;
+      mat.map = videoTex;
+      mat.emissive = new THREE.Color(0x223344);
+      mat.emissiveMap = videoTex;
+      mat.emissiveIntensity = 0.22;
+      mat.needsUpdate = true;
+    });
   }
 
   _buildStandCrowdPanels() {
@@ -523,6 +557,11 @@ export class CrowdSystem {
     this.backdrops.forEach((bd) => {
       const mat = bd.mat;
       if (!mat.map) return;
+      if (mat.map.isVideoTexture) {
+        mat.emissiveIntensity = 0.18 + this.excitement * 0.18 + Math.sin(t * 0.9 + bd.phase) * 0.04;
+        bd.mesh.rotation.z = Math.sin(t * 0.6 + bd.phase) * 0.006 * (1 + this.excitement);
+        return;
+      }
       mat.map.offset.x = Math.sin(t * 0.35 + bd.phase) * sway;
       mat.map.offset.y = Math.cos(t * 0.28 + bd.phase * 1.3) * sway * 0.5;
       mat.emissiveIntensity = 0.1 + this.excitement * 0.14 + Math.sin(t * 0.9 + bd.phase) * 0.03;

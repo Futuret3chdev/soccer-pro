@@ -1,0 +1,7 @@
+Football stadium (football-stadium-poly.glb)
+Source: Poly by Google via Poly Pizza (https://poly.pizza/m/6TZCkGh76m5)
+License: Creative Commons Attribution 3.0 (CC BY 3.0)
+https://creativecommons.org/licenses/by/3.0/
+
+Inspired by free CGTrader soccer stadium search results; substituted with
+a directly downloadable CC-licensed GLB for web deployment.
