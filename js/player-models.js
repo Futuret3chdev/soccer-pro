@@ -6,7 +6,7 @@ import { createHumanoid, animateHumanoid, skinColor } from './models.js';
 const TARGET_HEIGHT = 1.82;
 const ASSETS = {
   fieldRun: '/assets/players/field-run.glb',
-  fieldKick: '/assets/players/field-kick.glb',
+
   goalkeeper: '/assets/players/goalkeeper.glb'
 };
 
@@ -57,7 +57,9 @@ function prepareSkinnedMesh(mesh) {
 
 function cloneScene(source) {
   const clone = SkeletonUtils.clone(source);
+  clone.frustumCulled = false;
   clone.traverse((o) => {
+    o.frustumCulled = false;
     if (o.isSkinnedMesh) {
       prepareSkinnedMesh(o);
       if (Array.isArray(o.material)) o.material = o.material.map(m => m.clone());
@@ -164,6 +166,7 @@ function applyPlayerLook(root, opts) {
       } else if (mat.color) {
         mat.color.copy(jersey);
       }
+      mat.fog = false;
       mat.needsUpdate = true;
     });
   });
@@ -184,9 +187,8 @@ function applyPlayerLook(root, opts) {
 export async function preloadPlayerModels() {
   if (library) return library;
   try {
-    const [fieldRun, fieldKick, gk] = await Promise.all([
+    const [fieldRun, gk] = await Promise.all([
       loadGltf(ASSETS.fieldRun),
-      loadGltf(ASSETS.fieldKick),
       loadGltf(ASSETS.goalkeeper)
     ]);
 
@@ -203,7 +205,6 @@ export async function preloadPlayerModels() {
       gkScene,
       clips: {
         run: pickClip(fieldRun.animations, 'run', 'mplayer'),
-        kick: pickClip(fieldKick.animations, 'strike', 'kick', 'forward'),
         gkIdle: pickClip(gk.animations, 'idle', 'breathing', 'goalkeeper')
       }
     };
@@ -259,12 +260,7 @@ export function createPlayer(opts = {}) {
     actions.run.play();
     actions.run.setEffectiveTimeScale(0);
     actions.run.setEffectiveWeight(0);
-    if (lib.clips.kick) {
-      actions.kick = mixer.clipAction(lib.clips.kick);
-      actions.kick.loop = THREE.LoopOnce;
-      actions.kick.clampWhenFinished = false;
-      actions.kick.setEffectiveWeight(0);
-    }
+
   }
 
   root.userData = {
@@ -297,14 +293,7 @@ export function animatePlayer(mesh, speed, kicking = false, dt = 0.016, sliding 
   if (d.mixer) {
     const kickingNow = d.kickTimer > 0;
 
-    if (kicking && d.actions?.kick && d.kickTimer <= 0) {
-      d.kickTimer = 0.55;
-      d.actions.kick.reset().setEffectiveWeight(1).play();
-    } else if (!kickingNow && d.actions?.kick) {
-      const kw = d.actions.kick.getEffectiveWeight();
-      if (kw > 0.01) d.actions.kick.fadeOut(0.15);
-      else if (kw > 0) d.actions.kick.setEffectiveWeight(0);
-    }
+    if (kicking && d.kickTimer <= 0) d.kickTimer = 0.55;
 
     if (d.actions?.idle) {
       if (!d.actions.idle.isRunning()) d.actions.idle.play();
@@ -314,15 +303,13 @@ export function animatePlayer(mesh, speed, kicking = false, dt = 0.016, sliding 
       if (!d.locomotion && speed > startMove && d.slideBlend < 0.12) d.locomotion = true;
       else if (d.locomotion && speed < stopMove) d.locomotion = false;
 
-      const kickBlend = d.actions?.kick?.getEffectiveWeight() || 0;
-      const moving = d.locomotion && kickBlend < 0.5;
-      if (moving) {
+      if (d.locomotion && !kickingNow) {
         const pace = THREE.MathUtils.lerp(0.95, 1.25, Math.min(speed / 6.5, 1));
         d.actions.run.setEffectiveTimeScale(pace);
-        d.actions.run.setEffectiveWeight(THREE.MathUtils.lerp(1, 0.35, kickBlend));
-      } else if (kickBlend > 0.01) {
+        d.actions.run.setEffectiveWeight(1);
+      } else if (kickingNow) {
         d.actions.run.setEffectiveTimeScale(0);
-        d.actions.run.setEffectiveWeight(THREE.MathUtils.lerp(0, 0.35, kickBlend));
+        d.actions.run.setEffectiveWeight(0.4);
       } else {
         d.actions.run.setEffectiveTimeScale(0);
         d.actions.run.setEffectiveWeight(0);
