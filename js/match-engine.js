@@ -10,6 +10,7 @@ import { commentaryVoice } from './commentary-voice.js';
 const MATCH_SEC = 120;
 const GOAL_W = 7.32;
 const GOAL_DEPTH = 1.5;
+const PITCH_MARGIN = 0.55;
 
 function lerpAngle(a, b, t) {
   let d = b - a;
@@ -94,6 +95,9 @@ export class MatchEngine {
     this.input = { x: 0, z: 0, sprint: false, shoot: false, shootHold: false, pass: false, switch: false, slide: false };
     this.power = 0;
     this.announceTimer = 0;
+    this._prevBallOwner = null;
+    this.manualSwitchTimer = 0;
+    this.passTarget = null;
 
     this._spawnTeams();
     this._lastW = 0;
@@ -218,9 +222,94 @@ export class MatchEngine {
         const next = homeField[(Math.max(0, cur) + 1) % homeField.length];
         next.controlled = true;
         this.controlledIdx = this.entities.indexOf(next);
+        this.manualSwitchTimer = 2.5;
       }
       this.input.switch = false;
     }
+  }
+
+  _switchControlTo(player) {
+    if (!player || !player.isHome || player.isGK) return;
+    this.entities.forEach((e) => {
+      if (e.isHome && !e.isGK) e.controlled = false;
+    });
+    player.controlled = true;
+    this.controlledIdx = this.entities.indexOf(player);
+  }
+
+  _nearestHomeToBall(maxDist = Infinity) {
+    const ball = this.ball.mesh.position;
+    let nearest = null;
+    let bestD = maxDist;
+    this.entities.forEach((e) => {
+      if (!e.isHome || e.isGK) return;
+      const d = e.mesh.position.distanceTo(ball);
+      if (d < bestD) { bestD = d; nearest = e; }
+    });
+    return nearest;
+  }
+
+  _autoSwitchToBall() {
+    if (this.manualSwitchTimer > 0 || this.setPiece) return;
+
+    const ball = this.ball.mesh.position;
+    const controlled = this.entities.find(e => e.controlled);
+
+    if (this.passTarget?.isHome && !this.passTarget.isGK && !this.ball.owner) {
+      const td = this.passTarget.mesh.position.distanceTo(ball);
+      if (td < 22) {
+        this._switchControlTo(this.passTarget);
+        if (td < 5.5 || this.ball.vel.length() < 5) this.passTarget = null;
+        return;
+      }
+      this.passTarget = null;
+    }
+
+    if (this.ball.owner?.isHome && !this.ball.owner.isGK) {
+      if (!this.ball.owner.controlled) this._switchControlTo(this.ball.owner);
+      return;
+    }
+
+    const nearest = this._nearestHomeToBall(16);
+    if (!nearest) return;
+
+    const nearD = nearest.mesh.position.distanceTo(ball);
+    const curD = controlled ? controlled.mesh.position.distanceTo(ball) : Infinity;
+
+    if (this.ball.owner && !this.ball.owner.isHome) {
+      if (nearD < 14 && (nearD < curD - 1 || nearD < 5)) {
+        this._switchControlTo(nearest);
+      }
+      return;
+    }
+
+    if (!this.ball.owner) {
+      const slow = this.ball.vel.length() < 9;
+      if (slow && nearD < 14 && (nearD < curD - 1.2 || nearD < 4.5)) {
+        this._switchControlTo(nearest);
+      }
+    }
+  }
+
+  _onPossessionChange(newOwner) {
+    if (this.manualSwitchTimer > 0) return;
+    if (newOwner?.isHome && !newOwner.isGK) {
+      this._switchControlTo(newOwner);
+    } else if (!newOwner) {
+      this._autoSwitchToBall();
+    } else {
+      this._autoSwitchToBall();
+    }
+  }
+
+  _applyPitchBounds(e) {
+    const maxX = PITCH_L / 2 - PITCH_MARGIN;
+    const maxZ = PITCH_W / 2 - PITCH_MARGIN;
+    const p = e.mesh.position;
+    if (p.x > maxX) { p.x = maxX; if (e.vel.x > 0) e.vel.x = 0; }
+    else if (p.x < -maxX) { p.x = -maxX; if (e.vel.x < 0) e.vel.x = 0; }
+    if (p.z > maxZ) { p.z = maxZ; if (e.vel.z > 0) e.vel.z = 0; }
+    else if (p.z < -maxZ) { p.z = -maxZ; if (e.vel.z < 0) e.vel.z = 0; }
   }
 
   start() {
@@ -233,6 +322,9 @@ export class MatchEngine {
     CrowdAudio.startAmbient();
     this._crowdWasWaving = false;
     this.cinematic = { active: true, t: 0, duration: 7.2 };
+    this.manualSwitchTimer = 0;
+    this._prevBallOwner = null;
+    this.passTarget = null;
     this._camPos.set(0, 28, 55);
     this._camLook.set(0, 0, 0);
     Audio.whistle();
@@ -299,6 +391,7 @@ export class MatchEngine {
 
     if (this.announceTimer > 0) this.announceTimer -= dt;
     if (this.outCooldown > 0) this.outCooldown -= dt;
+    if (this.manualSwitchTimer > 0) this.manualSwitchTimer -= dt;
     this.commentary.setContext({
       homeScore: this.homeScore,
       awayScore: this.awayScore,
@@ -396,8 +489,7 @@ export class MatchEngine {
 
     e.mesh.position.x += e.vel.x * dt;
     e.mesh.position.z += e.vel.z * dt;
-    e.mesh.position.x = THREE.MathUtils.clamp(e.mesh.position.x, -PITCH_L / 2 + 1, PITCH_L / 2 - 1);
-    e.mesh.position.z = THREE.MathUtils.clamp(e.mesh.position.z, -PITCH_W / 2 + 1, PITCH_W / 2 - 1);
+    this._applyPitchBounds(e);
 
     const spd = Math.hypot(e.vel.x, e.vel.z);
     if (!e.controlled && spd > 0.3) {
@@ -452,6 +544,7 @@ export class MatchEngine {
 
   _checkSlideTackle(slider) {
     if (slider.slidePhase !== 'burst') return;
+    const prevOwner = this.ball.owner;
     const oppSide = !slider.isHome;
     this.entities.forEach((opp) => {
       if (opp.isHome !== oppSide || opp.isGK) return;
@@ -473,6 +566,10 @@ export class MatchEngine {
     if (this.ball.owner && this.ball.owner.isHome !== slider.isHome && bd < 1.5) {
       this.ball.owner = slider;
       this.ball.vel.set(0, 0, 0);
+    }
+    if (this.ball.owner !== prevOwner) {
+      this._onPossessionChange(this.ball.owner);
+      this._prevBallOwner = this.ball.owner;
     }
   }
 
@@ -563,6 +660,11 @@ export class MatchEngine {
     this.ball.vel.copy(dir.multiplyScalar(12));
     this.ball.owner = null;
     this.ball.lastOwner = player;
+    if (player.isHome && !best.isGK) {
+      this.passTarget = best;
+      this.manualSwitchTimer = 0;
+      this._switchControlTo(best);
+    }
     Audio.pass();
     this.commentary.pass(player, best);
   }
@@ -583,12 +685,20 @@ export class MatchEngine {
 
     this._checkOutOfPlay();
 
+    const prevOwner = b.owner;
     this.entities.forEach(e => {
       const d = e.mesh.position.distanceTo(b.mesh.position);
-      if (d < 1.15 && b.vel.length() < 8) {
+      if (d < 1.2 && b.vel.length() < 9) {
         b.owner = e;
       }
     });
+
+    if (b.owner !== prevOwner) {
+      this._onPossessionChange(b.owner);
+      this._prevBallOwner = b.owner;
+    } else if (!b.owner) {
+      this._autoSwitchToBall();
+    }
 
     b.mesh.rotation.x += b.vel.length() * dt * 2;
     b.mesh.rotation.z += b.vel.z * dt * 3;
@@ -631,31 +741,14 @@ export class MatchEngine {
     const halfW = PITCH_W / 2;
     const px = b.mesh.position.x;
     const pz = b.mesh.position.z;
-    const inGoalMouth = Math.abs(pz) <= GOAL_W / 2;
-    const speed = b.vel.length();
+    const inGoalMouth = Math.abs(pz) <= GOAL_W / 2 + 0.2;
 
-    if (Math.abs(pz) > halfW) {
-      if (Math.abs(pz) > halfW + 1.2 && speed < 5) {
-        this._awardThrowIn(px, pz);
-        return;
-      }
-      b.mesh.position.z = Math.sign(pz) * (halfW - 0.15);
-      b.vel.z *= -0.42;
-      b.vel.x *= 0.9;
-      b.vel.multiplyScalar(0.85);
-      return;
-    }
+    const outZ = Math.abs(pz) > halfW + 0.08;
+    const outX = Math.abs(px) > halfL + 0.08;
+    if (!outX && !outZ) return;
+    if (outX && inGoalMouth) return;
 
-    if (Math.abs(px) > halfL && !inGoalMouth) {
-      if (Math.abs(px) > halfL + 1.2 && speed < 5) {
-        this._awardThrowIn(px, pz);
-        return;
-      }
-      b.mesh.position.x = Math.sign(px) * (halfL - 0.15);
-      b.vel.x *= -0.42;
-      b.vel.z *= 0.9;
-      b.vel.multiplyScalar(0.85);
-    }
+    this._awardThrowIn(px, pz);
   }
 
   _awardThrowIn(px, pz) {
@@ -680,9 +773,10 @@ export class MatchEngine {
 
     if (nearest) {
       nearest.mesh.position.set(x, 0, z);
-      const pushZ = z > 0 ? -1.5 : 1.5;
-      nearest.mesh.position.z = z + (Math.abs(z) > PITCH_W / 2 - 1 ? pushZ : pushZ * 0.3);
+      const pushZ = z > 0 ? -1.2 : 1.2;
+      nearest.mesh.position.z = z + (Math.abs(z) >= PITCH_W / 2 - 0.5 ? pushZ : pushZ * 0.25);
       this.setPiece = { player: nearest, timer: 1.8 };
+      if (throwHome) this._switchControlTo(nearest);
     }
 
     this.outCooldown = 2.5;
@@ -719,6 +813,9 @@ export class MatchEngine {
     this.ball.mesh.position.set(0, 0.11, 0);
     this.ball.vel.set(0, 0, 0);
     this.ball.owner = null;
+    this.manualSwitchTimer = 0;
+    this._prevBallOwner = null;
+    this.passTarget = null;
     this.entities.forEach(e => {
       const slotX = (e.homeSlot.x - 0.5) * PITCH_L;
       const slotZ = (e.homeSlot.z - 0.5) * PITCH_W;
