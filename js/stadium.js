@@ -89,9 +89,10 @@ export class Stadium {
   async _loadExternalAssets() {
     try {
       this._gltfShell = await loadStadiumGltf(this.group);
-      this._setProceduralShellVisible(false);
+      this._gltfShell.scale.multiplyScalar(1.12);
+      this._gltfShell.position.y = -0.15;
     } catch (err) {
-      console.warn('Stadium GLTF unavailable, using procedural bowl', err);
+      console.warn('Stadium GLTF backdrop unavailable, using procedural bowl only', err);
     }
     if (this.crowd) {
       await this.crowd.loadExternalAssets();

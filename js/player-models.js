@@ -4,7 +4,6 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { createHumanoid, animateHumanoid, skinColor } from './models.js';
 
 const TARGET_HEIGHT = 1.82;
-const STAND_RUN_PHASE = 0.38;
 const RUN_SPEED_REF = 5.5;
 const ASSETS = {
   fieldRun: '/assets/players/field-run.glb',
@@ -208,9 +207,9 @@ function applyPlayerLook(root, opts) {
   root.userData.appearance = { number, variant, skinTone, hairColor, height };
 }
 
-function standTimeFor(clip, phase = 0) {
+function standTimeFor(clip, phase = 0.12) {
   if (!clip) return 0;
-  return clip.duration * STAND_RUN_PHASE + phase;
+  return clip.duration * phase;
 }
 
 function freezeRun(run, time) {
@@ -218,6 +217,13 @@ function freezeRun(run, time) {
   run.setEffectiveTimeScale(0);
   run.time = time;
   if (!run.isRunning()) run.play();
+}
+
+function freezeIdle(idle, time = 0) {
+  idle.setEffectiveWeight(1);
+  idle.setEffectiveTimeScale(0);
+  idle.time = time;
+  if (!idle.isRunning()) idle.play();
 }
 
 function syncGroundOffset(root, mixer) {
@@ -243,11 +249,12 @@ export async function preloadPlayerModels() {
 
     const mRun = stripRootMotion(pickClip(fieldRun.animations, 'run', 'mplayer'));
     const fwRun = stripRootMotion(pickClip(fwplayer.animations, 'dribble', 'fwplayer', 'jog', 'run'));
+    const aIdle = stripRootMotion(pickClip(aplayer.animations, 'receive', 'soccer', 'idle'));
 
     const variants = [
-      { scene: fieldRun.scene, run: mRun },
-      { scene: aplayer.scene, run: mRun },
-      { scene: fwplayer.scene, run: fwRun }
+      { scene: fieldRun.scene, run: mRun, standPhase: 0.12 },
+      { scene: aplayer.scene, run: mRun, idle: aIdle, standPhase: 0 },
+      { scene: fwplayer.scene, run: fwRun, standPhase: 0.08 }
     ];
     variants.forEach((v) => {
       normalizeModel(v.scene);
@@ -307,12 +314,21 @@ export function createPlayer(opts = {}) {
   const actions = {};
   const phase = (variant % 97) * 0.0027;
   const runClip = isGK ? null : fieldVariant.run;
-  const standTime = standTimeFor(runClip, phase);
+  const idleClip = isGK ? null : fieldVariant.idle;
+  const standTime = standTimeFor(runClip, fieldVariant.standPhase ?? 0.12) + phase * 0.04;
 
   if (isGK && lib.clips.gkIdle) {
     actions.idle = mixer.clipAction(lib.clips.gkIdle);
     actions.idle.loop = THREE.LoopRepeat;
     actions.idle.play();
+  } else if (runClip && idleClip) {
+    actions.idle = mixer.clipAction(idleClip);
+    actions.idle.loop = THREE.LoopRepeat;
+    actions.run = mixer.clipAction(runClip);
+    actions.run.loop = THREE.LoopRepeat;
+    actions.run.clampWhenFinished = false;
+    actions.run.setEffectiveWeight(0);
+    freezeIdle(actions.idle, fieldVariant.standPhase ?? 0);
   } else if (runClip) {
     actions.run = mixer.clipAction(runClip);
     actions.run.loop = THREE.LoopRepeat;
@@ -355,22 +371,48 @@ export function animatePlayer(mesh, speed, kicking = false, dt = 0.016, sliding 
     const kickingNow = d.kickTimer > 0;
     if (kicking && d.kickTimer <= 0) d.kickTimer = 0.45;
 
-    if (d.actions?.idle) {
+    if (d.actions?.idle && d.actions?.run) {
+      const idle = d.actions.idle;
+      const run = d.actions.run;
+      const wasMoving = d.locomotion;
+      if (!d.locomotion && speed > d.moveThreshold && d.slideBlend < 0.15) d.locomotion = true;
+      else if (d.locomotion && speed < d.stopThreshold) d.locomotion = false;
+
+      const moving = d.locomotion && !kickingNow && d.slideBlend < 0.25;
+      const blend = 1 - Math.exp(-14 * dt);
+      if (moving) {
+        if (!wasMoving) run.time = d.standTime;
+        idle.setEffectiveWeight(THREE.MathUtils.lerp(idle.getEffectiveWeight(), 0, blend));
+        run.setEffectiveWeight(THREE.MathUtils.lerp(run.getEffectiveWeight(), 1, blend));
+        run.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / RUN_SPEED_REF, 0.85, 1.35));
+      } else {
+        freezeIdle(idle, 0);
+        run.setEffectiveWeight(THREE.MathUtils.lerp(run.getEffectiveWeight(), 0, blend));
+        run.setEffectiveTimeScale(0);
+      }
+      if (!idle.isRunning()) idle.play();
+      if (!run.isRunning()) run.play();
+      d.mixer.update(dt);
+    } else if (d.actions?.idle) {
       if (!d.actions.idle.isRunning()) d.actions.idle.play();
+      d.mixer.update(dt);
     } else if (d.actions?.run) {
       const run = d.actions.run;
       const wasMoving = d.locomotion;
       if (!d.locomotion && speed > d.moveThreshold && d.slideBlend < 0.15) d.locomotion = true;
       else if (d.locomotion && speed < d.stopThreshold) d.locomotion = false;
 
-      if (!wasMoving && d.locomotion) {
+      const moving = d.locomotion && !kickingNow && d.slideBlend < 0.25;
+      if (!wasMoving && moving) {
         run.time = d.standTime;
-      } else if (wasMoving && !d.locomotion) {
-        freezeRun(run, run.time);
+      } else if (wasMoving && !moving) {
+        freezeRun(run, d.standTime);
+      } else if (!moving) {
+        freezeRun(run, d.standTime);
       }
 
       run.setEffectiveWeight(1);
-      if (d.locomotion && !kickingNow && d.slideBlend < 0.25) {
+      if (moving) {
         const pace = THREE.MathUtils.clamp(speed / RUN_SPEED_REF, 0.85, 1.35);
         run.setEffectiveTimeScale(pace);
       } else {

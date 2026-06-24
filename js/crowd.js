@@ -2,7 +2,6 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.m
 import { PITCH_W, PITCH_L, standDeckTop, standRailY, standTierRadii, STAND_TIER_COUNT } from './stands.js';
 import { makeCrowdPanoramaTexture } from './crowd-textures.js';
 import { createCrowdVideoTexture } from './crowd-video.js';
-import { loadCrowdGltf } from './crowd-gltf.js';
 
 const FAN_BODY_HALF = 0.34;
 
@@ -126,14 +125,7 @@ export class CrowdSystem {
     } catch (err) {
       console.warn('Crowd video texture unavailable', err);
     }
-    try {
-      this._gltfCrowd = await loadCrowdGltf(this.group, {
-        homeColor: this._opts.homeColor || '#1565c0',
-        awayColor: this._opts.awayColor || '#c62828'
-      });
-    } catch (err) {
-      console.warn('Crowd GLTF clusters unavailable', err);
-    }
+    // GLTF crowd clusters disabled — low-poly blobs read poorly on TV-style broadcast camera.
   }
 
   _applyVideoCrowdPanels(videoTex) {
