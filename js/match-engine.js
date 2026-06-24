@@ -500,24 +500,43 @@ export class MatchEngine {
     else if (p.z < -maxZ) { p.z = -maxZ; if (e.vel.z < 0) e.vel.z = 0; }
   }
 
+  _goalLineX() {
+    return PITCH_L / 2;
+  }
+
   _ballInGoalMouth(pz) {
     return Math.abs(pz) <= GOAL_W / 2 + 0.12;
   }
 
   _ballPastGoalLine(px) {
-    const line = PITCH_L / 2;
-    return px > line - 0.15 || px < -(line - 0.15);
+    const line = this._goalLineX();
+    return px > line - BALL_RADIUS || px < -(line - BALL_RADIUS);
   }
 
   _ballInGoalZone(px, pz) {
     return this._ballInGoalMouth(pz) && this._ballPastGoalLine(px);
   }
 
+  _ballThreateningGoal(pos, defendHome) {
+    if (!this._ballInGoalMouth(pos.z)) return false;
+    const line = this._goalLineX();
+    if (defendHome) return pos.x < -(line - 3.2);
+    return pos.x > line - 3.2;
+  }
+
   _shotHeadingIntoGoal(vel, pos, defendHome) {
     if (!this._ballInGoalMouth(pos.z)) return false;
-    const line = PITCH_L / 2;
-    if (defendHome) return vel.x < -1.2 && pos.x < line + 6;
-    return vel.x > 1.2 && pos.x > line - 6;
+    if (this._ballThreateningGoal(pos, defendHome)) return true;
+    const line = this._goalLineX();
+    if (defendHome) return vel.x < -0.35 && pos.x < line + 8;
+    return vel.x > 0.35 && pos.x > line - 8;
+  }
+
+  _ballBehindKeeper(pos, defendHome) {
+    const line = this._goalLineX();
+    const gkX = defendHome ? -(line - 2) : line - 2;
+    if (defendHome) return pos.x < gkX - 0.25;
+    return pos.x > gkX + 0.25;
   }
 
   start(opts = {}) {
@@ -830,13 +849,16 @@ export class MatchEngine {
 
       const speed = this.ball.vel.length();
       const shotIn = this._shotHeadingIntoGoal(this.ball.vel, ball, e.isHome);
+      const behindGk = this._ballBehindKeeper(ball, e.isHome);
 
-      if (dist < 2.4 && this.ball.owner !== e) {
+      if (shotIn && behindGk) return;
+
+      if (dist < 1.55 && this.ball.owner !== e && !behindGk) {
         if (shotIn) {
-          if (speed > 7 && Math.random() < 0.22) {
-            this.ball.vel.x *= -0.35;
-            this.ball.vel.z += (Math.random() - 0.5) * 4;
-            this.ball.vel.multiplyScalar(0.55);
+          if (speed > 9 && Math.random() < 0.14) {
+            this.ball.vel.x *= -0.28;
+            this.ball.vel.z += (Math.random() - 0.5) * 3;
+            this.ball.vel.multiplyScalar(0.5);
             this.commentary.save(e);
             this.stadium.crowd?.reactSave(e.isHome);
             CrowdAudio.reactAttack(e.isHome);
@@ -844,7 +866,7 @@ export class MatchEngine {
           }
           return;
         }
-        if (speed > 13) return;
+        if (speed > 11) return;
         this.ball.owner = e;
         if (Math.random() < 0.35) {
           this.commentary.save(e);
@@ -939,19 +961,25 @@ export class MatchEngine {
       return;
     }
 
+    const prevX = b.mesh.position.x;
     b.mesh.position.addScaledVector(b.vel, dt);
     b.vel.multiplyScalar(0.985);
     b.mesh.position.y = BALL_RADIUS + Math.max(0, b.vel.length() * 0.01);
     this._updateBallShadow();
 
-    this._checkGoals();
+    this._checkGoals(prevX);
     this._checkOutOfPlay();
 
     const prevOwner = b.owner;
     this.entities.forEach(e => {
       const d = e.mesh.position.distanceTo(b.mesh.position);
-      if (d < 1.2 && b.vel.length() < 9) {
-        if (e.isGK && this._shotHeadingIntoGoal(b.vel, b.mesh.position, e.isHome)) return;
+      if (d < 1.15 && b.vel.length() < 11) {
+        if (e.isGK) {
+          const pos = b.mesh.position;
+          if (this._ballInGoalZone(pos.x, pos.z)) return;
+          if (this._shotHeadingIntoGoal(b.vel, pos, e.isHome)) return;
+          if (this._ballThreateningGoal(pos, e.isHome)) return;
+        }
         b.owner = e;
       }
     });
@@ -967,21 +995,28 @@ export class MatchEngine {
     b.mesh.rotation.z += b.vel.z * dt * 3;
   }
 
-  _checkGoals() {
+  _checkGoals(prevX = this.ball.mesh.position.x) {
     if (this.announceTimer > 0) return;
     const bx = this.ball.mesh.position.x;
     const bz = this.ball.mesh.position.z;
     if (!this._ballInGoalMouth(bz)) return;
 
-    const line = PITCH_L / 2;
-    if (bx < -(line - 0.12)) {
+    const line = this._goalLineX();
+    const homeLine = -(line - BALL_RADIUS);
+    const awayLine = line - BALL_RADIUS;
+    const crossedHome = prevX > homeLine && bx <= homeLine;
+    const crossedAway = prevX < awayLine && bx >= awayLine;
+    const inHomeNet = bx <= homeLine || crossedHome;
+    const inAwayNet = bx >= awayLine || crossedAway;
+
+    if (inHomeNet) {
       this.awayScore++;
       this.onGoal('away', this.awayScore, this.homeScore);
       this.commentary.setContext({ homeScore: this.homeScore, awayScore: this.awayScore });
       this.commentary.goal(this.ball.lastOwner, true);
       this._celebrate(false);
       this._kickoff();
-    } else if (bx > line - 0.12) {
+    } else if (inAwayNet) {
       this.homeScore++;
       this.onGoal('home', this.homeScore, this.awayScore);
       this.commentary.setContext({ homeScore: this.homeScore, awayScore: this.awayScore });
