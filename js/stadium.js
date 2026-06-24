@@ -13,18 +13,18 @@ function makeGrassTexture() {
   for (let row = 0; row < 32; row++) {
     for (let col = 0; col < 32; col++) {
       const stripe = col % 2 === 0;
-      const hue = stripe ? '#4cb858' : '#3a9a46';
+      const hue = stripe ? '#5fe070' : '#2f9e42';
       ctx.fillStyle = hue;
       ctx.fillRect(col * 32, row * 32, 32, 32);
     }
   }
 
-  ctx.globalAlpha = 0.18;
-  for (let i = 0; i < 8000; i++) {
+  ctx.globalAlpha = 0.12;
+  for (let i = 0; i < 5000; i++) {
     const x = Math.random() * 1024;
     const y = Math.random() * 1024;
-    const g = 40 + Math.random() * 30;
-    ctx.fillStyle = `rgb(${g - 10},${g + 40},${g - 5})`;
+    const shade = 30 + Math.random() * 25;
+    ctx.fillStyle = `rgb(${shade - 8},${shade + 95},${shade + 5})`;
     ctx.fillRect(x, y, 1 + Math.random(), 2 + Math.random() * 2);
   }
   ctx.globalAlpha = 1;
@@ -81,9 +81,11 @@ export class Stadium {
     const pitchGeo = new THREE.PlaneGeometry(PITCH_L, PITCH_W);
     const pitchMat = new THREE.MeshStandardMaterial({
       map: grassTex,
-      roughness: 0.86,
+      roughness: 0.78,
       metalness: 0.01,
-      color: 0xffffff
+      color: 0x9ef5a8,
+      emissive: 0x143818,
+      emissiveIntensity: 0.08
     });
     const pitch = new THREE.Mesh(pitchGeo, pitchMat);
     pitch.rotation.x = -Math.PI / 2;
@@ -341,7 +343,7 @@ export class Stadium {
 
   _buildLights() {
     this.scene.add(new THREE.AmbientLight(0x607090, 0.42));
-    this.scene.add(new THREE.HemisphereLight(0xb8c8e8, 0x3d8a48, 0.48));
+    this.scene.add(new THREE.HemisphereLight(0xb8c8e8, 0x2a9e3c, 0.55));
 
     this.sun = new THREE.DirectionalLight(0xfff2d6, 2.2);
     this.sun.position.set(35, 52, 22);
