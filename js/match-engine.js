@@ -270,14 +270,18 @@ export class MatchEngine {
   _addPlayer(data, slot, isHome, idx, controlled = false) {
     const color = isHome ? this.homeColor : this.awayColor;
     const num = isHome ? idx + 1 : idx + 10;
+    const variantSeed = (data.id || `${isHome ? 'h' : 'a'}-${idx}`)
+      .split('')
+      .reduce((sum, ch) => sum + ch.charCodeAt(0), 0) + idx * 17;
     const mesh = createPlayer({
       jerseyColor: color,
       shortsColor: isHome ? 0xffffff : 0x212121,
-      skinTone: data.skin ?? 0.5,
-      hairColor: data.hair || 0x1a1a1a,
+      skinTone: data.skin ?? (0.25 + (variantSeed % 60) / 100),
+      hairColor: data.hair || ['#1a1a1a', '#3e2723', '#5d4037', '#4a3728', '#212121'][variantSeed % 5],
       number: num,
-      height: data.height || 1.82,
-      isGK: slot.role === 'GK'
+      height: data.height || (1.74 + (variantSeed % 18) / 100),
+      isGK: slot.role === 'GK',
+      variant: variantSeed
     });
 
     const x = (slot.x - 0.5) * PITCH_L;
