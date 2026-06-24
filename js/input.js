@@ -5,6 +5,7 @@ let inited = false;
 const keys = {};
 const shootHold = { active: false };
 const stick = { x: 0, z: 0, active: false };
+let slideQueued = false;
 
 export function bindEngine(e) {
   engine = e;
@@ -26,7 +27,10 @@ export function initInput() {
     if (e.code === 'Tab') engine?.setInput({ switch: true });
     if (e.code === 'Space') shootHold.active = true;
     if (e.code === 'KeyE') pulseInput({ pass: true });
-    if (e.code === 'KeyC') pulseInput({ slide: true });
+    if (e.code === 'KeyC') {
+      e.preventDefault();
+      slideQueued = true;
+    }
   });
 
   window.addEventListener('keyup', (e) => {
@@ -97,10 +101,7 @@ export function initInput() {
 
   let sprintTouch = false;
   bindAct('btn-sprint', () => { sprintTouch = true; }, () => { sprintTouch = false; });
-  bindAct('btn-slide', () => {
-    pulseInput({ slide: true });
-    setTimeout(() => pulseInput({ slide: false }), 50);
-  });
+  bindAct('btn-slide', () => { slideQueued = true; });
 
   function poll() {
     if (engine) {
@@ -122,8 +123,10 @@ export function initInput() {
         x: mx,
         z: mz,
         sprint: keys.ShiftLeft || keys.ShiftRight || sprintTouch,
-        shootHold: shootHold.active
+        shootHold: shootHold.active,
+        slide: slideQueued
       });
+      slideQueued = false;
     }
     requestAnimationFrame(poll);
   }
