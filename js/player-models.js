@@ -8,8 +8,16 @@ const STAND_RUN_PHASE = 0.38;
 const RUN_SPEED_REF = 5.5;
 const ASSETS = {
   fieldRun: '/assets/players/field-run.glb',
+  aplayer: '/assets/players/aplayer-base.glb',
+  fwplayer: '/assets/players/fwplayer-run.glb',
   goalkeeper: '/assets/players/goalkeeper.glb'
 };
+
+const BODY_PROFILES = [
+  { build: 1, depth: 1, heightBias: 0 },
+  { build: 0.94, depth: 0.97, heightBias: 0.05 },
+  { build: 1.06, depth: 1.05, heightBias: -0.03 }
+];
 
 const BOOT_COLORS = [0x101010, 0x1a1a1a, 0x0d47a1, 0xb71c1c, 0xf9a825, 0xffffff, 0x2e7d32];
 const HAIR_COLORS = [0x1a1a1a, 0x3e2723, 0x5d4037, 0x8d5524, 0xc68642, 0x4a3728, 0x212121];
@@ -141,7 +149,8 @@ function applyPlayerLook(root, opts) {
     height = TARGET_HEIGHT,
     variant = 0,
     isGK = false,
-    bootColor = 0x101010
+    bootColor = 0x101010,
+    modelType = 0
   } = opts;
 
   const jersey = new THREE.Color(jerseyColor);
@@ -185,12 +194,13 @@ function applyPlayerLook(root, opts) {
     });
   });
 
+  const profile = BODY_PROFILES[modelType % BODY_PROFILES.length];
   const heightMul = height / TARGET_HEIGHT;
-  const build = 0.94 + (variant % 5) * 0.03;
-  const depth = 0.96 + seededRand(variant + 11) * 0.1;
+  const build = (0.94 + (variant % 5) * 0.03) * profile.build;
+  const depth = (0.96 + seededRand(variant + 11) * 0.1) * profile.depth;
   root.scale.x *= build;
   root.scale.z *= depth;
-  root.scale.y *= heightMul;
+  root.scale.y *= heightMul * (1 + profile.heightBias);
   root.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(root);
   root.userData.groundOffset = -box.min.y;
@@ -220,29 +230,37 @@ function syncGroundOffset(root, mixer) {
 export async function preloadPlayerModels() {
   if (library) return library;
   try {
-    const [fieldRun, gk] = await Promise.all([
+    const [fieldRun, aplayer, fwplayer, gk] = await Promise.all([
       loadGltf(ASSETS.fieldRun),
+      loadGltf(ASSETS.aplayer),
+      loadGltf(ASSETS.fwplayer),
       loadGltf(ASSETS.goalkeeper)
     ]);
 
-    const fieldScene = fieldRun.scene;
     const gkScene = gk.scene;
-    normalizeModel(fieldScene);
     normalizeModel(gkScene);
-    fieldScene.userData._baseHeight = TARGET_HEIGHT;
     gkScene.userData._baseHeight = TARGET_HEIGHT;
 
-    const runClip = stripRootMotion(pickClip(fieldRun.animations, 'run', 'mplayer'));
+    const mRun = stripRootMotion(pickClip(fieldRun.animations, 'run', 'mplayer'));
+    const fwRun = stripRootMotion(pickClip(fwplayer.animations, 'dribble', 'fwplayer', 'jog', 'run'));
+
+    const variants = [
+      { scene: fieldRun.scene, run: mRun },
+      { scene: aplayer.scene, run: mRun },
+      { scene: fwplayer.scene, run: fwRun }
+    ];
+    variants.forEach((v) => {
+      normalizeModel(v.scene);
+      v.scene.userData._baseHeight = TARGET_HEIGHT;
+    });
 
     library = {
       useGltf: true,
-      fieldScene,
       gkScene,
+      variants,
       clips: {
-        run: runClip,
         gkIdle: pickClip(gk.animations, 'idle', 'breathing', 'goalkeeper')
-      },
-      standTime: standTimeFor(runClip)
+      }
     };
   } catch (err) {
     console.warn('GLTF player models failed to load, using procedural fallback:', err);
@@ -263,11 +281,13 @@ export function createPlayer(opts = {}) {
     number = 10,
     height = TARGET_HEIGHT,
     isGK = false,
-    variant = number
+    variant = number,
+    modelType = 0
   } = opts;
 
   const bootColor = BOOT_COLORS[Math.floor(seededRand(variant * 3.7) * BOOT_COLORS.length)];
-  const source = isGK ? lib.gkScene : lib.fieldScene;
+  const fieldVariant = lib.variants[modelType % lib.variants.length];
+  const source = isGK ? lib.gkScene : fieldVariant.scene;
   const root = cloneScene(source);
 
   applyPlayerLook(root, {
@@ -279,20 +299,22 @@ export function createPlayer(opts = {}) {
     height,
     variant,
     isGK,
-    bootColor
+    bootColor,
+    modelType
   });
 
   const mixer = new THREE.AnimationMixer(root);
   const actions = {};
   const phase = (variant % 97) * 0.0027;
-  const standTime = standTimeFor(lib.clips.run, phase);
+  const runClip = isGK ? null : fieldVariant.run;
+  const standTime = standTimeFor(runClip, phase);
 
   if (isGK && lib.clips.gkIdle) {
     actions.idle = mixer.clipAction(lib.clips.gkIdle);
     actions.idle.loop = THREE.LoopRepeat;
     actions.idle.play();
-  } else if (lib.clips.run) {
-    actions.run = mixer.clipAction(lib.clips.run);
+  } else if (runClip) {
+    actions.run = mixer.clipAction(runClip);
     actions.run.loop = THREE.LoopRepeat;
     actions.run.clampWhenFinished = false;
     freezeRun(actions.run, standTime);

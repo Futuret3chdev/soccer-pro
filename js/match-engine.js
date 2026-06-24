@@ -76,6 +76,7 @@ export class MatchEngine {
     this._camLook = new THREE.Vector3(0, 1, 0);
     this._camPos = new THREE.Vector3(0, 20, 40);
     this.cinematic = { active: false, t: 0, duration: 7.2 };
+    this.goalReplay = null;
     this.adPanel = null;
     this._kickoffTimer = null;
     this.loader = new THREE.TextureLoader();
@@ -281,7 +282,8 @@ export class MatchEngine {
       number: num,
       height: data.height || (1.74 + (variantSeed % 18) / 100),
       isGK: slot.role === 'GK',
-      variant: variantSeed
+      variant: variantSeed,
+      modelType: variantSeed % 3
     });
 
     const x = (slot.x - 0.5) * PITCH_L;
@@ -412,7 +414,7 @@ export class MatchEngine {
     const p = player.mesh.position;
     this.controlRing.group.position.set(p.x, 0, p.z);
     this.controlRing.group.rotation.y = player.mesh.rotation.y;
-    this.controlRing.group.visible = !this.cinematic.active && !this.adPanel?.active;
+    this.controlRing.group.visible = !this.cinematic.active && !this.adPanel?.active && !this.goalReplay?.active;
   }
 
   _updateControlRing(dt) {
@@ -631,6 +633,15 @@ export class MatchEngine {
     if (this.adPanel?.active) {
       this.adPanel.update(dt);
       this._updateAdCamera(dt);
+      if (this.stadium.crowd) {
+        this.stadium.crowd.update(dt);
+        CrowdAudio.tick(dt, this.stadium.crowd.excitement);
+      }
+      return;
+    }
+
+    if (this.goalReplay?.active) {
+      this._updateGoalReplay(dt);
       if (this.stadium.crowd) {
         this.stadium.crowd.update(dt);
         CrowdAudio.tick(dt, this.stadium.crowd.excitement);
@@ -1014,7 +1025,7 @@ export class MatchEngine {
   }
 
   _checkGoals(prevX = this.ball.mesh.position.x) {
-    if (this.announceTimer > 0) return;
+    if (this.goalReplay?.active || this.announceTimer > 0) return;
     const bx = this.ball.mesh.position.x;
     const bz = this.ball.mesh.position.z;
     if (!this._ballInGoalMouth(bz)) return;
@@ -1029,19 +1040,116 @@ export class MatchEngine {
 
     if (inHomeNet) {
       this.awayScore++;
-      this.onGoal('away', this.awayScore, this.homeScore);
-      this.commentary.setContext({ homeScore: this.homeScore, awayScore: this.awayScore });
-      this.commentary.goal(this.ball.lastOwner, true);
-      this._celebrate(false);
-      this._kickoff();
+      this._startGoalReplay(false);
     } else if (inAwayNet) {
       this.homeScore++;
+      this._startGoalReplay(true);
+    }
+  }
+
+  _startGoalReplay(homeScored) {
+    const goalX = homeScored ? PITCH_L / 2 : -PITCH_L / 2;
+    const sign = homeScored ? 1 : -1;
+    this.goalReplay = {
+      active: true,
+      t: 0,
+      duration: 4.4,
+      homeScored,
+      goalX,
+      sign
+    };
+    this.ball.owner = null;
+
+    if (homeScored) {
       this.onGoal('home', this.homeScore, this.awayScore);
       this.commentary.setContext({ homeScore: this.homeScore, awayScore: this.awayScore });
       this.commentary.goal(this.ball.lastOwner, false);
       this._celebrate(true);
+    } else {
+      this.onGoal('away', this.awayScore, this.homeScore);
+      this.commentary.setContext({ homeScore: this.homeScore, awayScore: this.awayScore });
+      this.commentary.goal(this.ball.lastOwner, true);
+      this._celebrate(false);
+    }
+    this.announceTimer = this.goalReplay.duration + 0.6;
+  }
+
+  _updateGoalReplay(dt) {
+    const gr = this.goalReplay;
+    if (!gr?.active) return;
+    gr.t += dt;
+
+    const b = this.ball;
+    b.mesh.position.addScaledVector(b.vel, dt);
+    b.vel.multiplyScalar(0.986);
+    b.vel.x += gr.sign * 2.2 * dt;
+    b.mesh.position.y = BALL_RADIUS + Math.max(0, b.vel.length() * 0.01);
+
+    const netBack = gr.goalX + gr.sign * 2.4;
+    if (gr.sign > 0) {
+      if (b.mesh.position.x > netBack) {
+        b.mesh.position.x = netBack;
+        b.vel.x = Math.min(b.vel.x, 0) * 0.35;
+      }
+    } else if (b.mesh.position.x < netBack) {
+      b.mesh.position.x = netBack;
+      b.vel.x = Math.max(b.vel.x, 0) * 0.35;
+    }
+    b.mesh.position.z = THREE.MathUtils.clamp(b.mesh.position.z, -GOAL_W / 2 + 0.15, GOAL_W / 2 - 0.15);
+    this._updateBallShadow();
+
+    this.entities.forEach((e) => {
+      e.vel.multiplyScalar(0.82);
+      e.mesh.position.x += e.vel.x * dt;
+      e.mesh.position.z += e.vel.z * dt;
+      animatePlayer(e.mesh, Math.hypot(e.vel.x, e.vel.z), false, dt, false);
+    });
+
+    this._updateGoalReplayCamera(dt);
+
+    if (gr.t >= gr.duration) {
+      this.goalReplay = null;
       this._kickoff();
     }
+  }
+
+  _getGoalReplayShot(t) {
+    const gr = this.goalReplay;
+    const u = THREE.MathUtils.clamp(t / gr.duration, 0, 1);
+    const ball = this.ball.mesh.position;
+    const gx = gr.goalX;
+    const s = gr.sign;
+
+    if (u < 0.32) {
+      return {
+        pos: new THREE.Vector3(ball.x - s * 9, 2.6, ball.z + (ball.z >= 0 ? 5.5 : -5.5)),
+        look: new THREE.Vector3(ball.x, 0.55, ball.z),
+        fov: 38
+      };
+    }
+    if (u < 0.68) {
+      return {
+        pos: new THREE.Vector3(gx + s * 2.6, 1.05, THREE.MathUtils.clamp(ball.z, -2.2, 2.2) + 2.4),
+        look: new THREE.Vector3(ball.x, 0.45, ball.z),
+        fov: 54
+      };
+    }
+    return {
+      pos: new THREE.Vector3(gx - s * 4.2, 5.4, 0.6),
+      look: new THREE.Vector3(gx + s * 1.4, 0.75, THREE.MathUtils.clamp(ball.z, -1.2, 1.2)),
+      fov: 40
+    };
+  }
+
+  _updateGoalReplayCamera(dt) {
+    const shot = this._getGoalReplayShot(this.goalReplay.t);
+    const ease = 1 - Math.exp(-5.5 * dt);
+    this._camPos.lerp(shot.pos, ease);
+    this._camLook.lerp(shot.look, ease);
+    this.camera.position.copy(this._camPos);
+    this.camera.lookAt(this._camLook);
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, shot.fov, dt * 4);
+    this.camera.updateProjectionMatrix();
   }
 
   _celebrate(homeScored) {
