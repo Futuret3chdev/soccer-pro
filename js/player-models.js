@@ -7,7 +7,6 @@ const TARGET_HEIGHT = 1.82;
 const ASSETS = {
   fieldRun: '/assets/players/field-run.glb',
   fieldKick: '/assets/players/field-kick.glb',
-  fieldIdle: '/assets/players/field-idle.glb',
   goalkeeper: '/assets/players/goalkeeper.glb'
 };
 
@@ -172,18 +171,12 @@ function applyPlayerLook(root, opts) {
   root.userData.appearance = { number, variant, skinTone, hairColor, height };
 }
 
-function fadeAction(from, to, duration = 0.2) {
-  if (from && to && from !== to) from.crossFadeTo(to, duration, true);
-  else if (to) to.play();
-}
-
 export async function preloadPlayerModels() {
   if (library) return library;
   try {
-    const [fieldRun, fieldKick, fieldIdle, gk] = await Promise.all([
+    const [fieldRun, fieldKick, gk] = await Promise.all([
       loadGltf(ASSETS.fieldRun),
       loadGltf(ASSETS.fieldKick),
-      loadGltf(ASSETS.fieldIdle),
       loadGltf(ASSETS.goalkeeper)
     ]);
 
@@ -201,7 +194,6 @@ export async function preloadPlayerModels() {
       clips: {
         run: pickClip(fieldRun.animations, 'run', 'mplayer'),
         kick: pickClip(fieldKick.animations, 'strike', 'kick', 'forward'),
-        idle: pickClip(fieldIdle.animations, 'receive', 'idle', 'breathing', 'soccer'),
         gkIdle: pickClip(gk.animations, 'idle', 'breathing', 'goalkeeper')
       }
     };
@@ -250,25 +242,17 @@ export function createPlayer(opts = {}) {
     actions.idle = mixer.clipAction(lib.clips.gkIdle);
     actions.idle.loop = THREE.LoopRepeat;
     actions.idle.play();
-    actions.idle.setEffectiveWeight(1);
-  } else {
-    if (lib.clips.idle) {
-      actions.idle = mixer.clipAction(lib.clips.idle);
-      actions.idle.loop = THREE.LoopRepeat;
-      actions.idle.play();
-      actions.idle.setEffectiveWeight(1);
-    }
-    if (lib.clips.run) {
-      actions.run = mixer.clipAction(lib.clips.run);
-      actions.run.loop = THREE.LoopRepeat;
-      actions.run.play();
-      actions.run.setEffectiveWeight(0);
-    }
+  } else if (lib.clips.run) {
+    actions.run = mixer.clipAction(lib.clips.run);
+    actions.run.loop = THREE.LoopRepeat;
+    actions.run.clampWhenFinished = false;
+    actions.run.play();
+    actions.run.time = 0;
+    actions.run.setEffectiveTimeScale(0);
     if (lib.clips.kick) {
       actions.kick = mixer.clipAction(lib.clips.kick);
       actions.kick.loop = THREE.LoopOnce;
       actions.kick.clampWhenFinished = true;
-      actions.kick.setEffectiveWeight(0);
     }
   }
 
@@ -280,7 +264,8 @@ export function createPlayer(opts = {}) {
     slideBlend: 0,
     groundOffset: root.userData.groundOffset || 0,
     height: height,
-    animState: 'idle'
+    locomotion: false,
+    moveThreshold: 0.75
   };
 
   return root;
@@ -299,48 +284,35 @@ export function animatePlayer(mesh, speed, kicking = false, dt = 0.016, sliding 
   if (d.kickTimer > 0) d.kickTimer -= dt;
 
   if (d.mixer) {
+    const kickingNow = d.kickTimer > 0;
+
     if (kicking && d.actions?.kick && d.kickTimer <= 0) {
       d.kickTimer = 0.55;
-      if (d.actions.run) d.actions.run.setEffectiveWeight(0);
-      if (d.actions.idle) d.actions.idle.setEffectiveWeight(0);
       d.actions.kick.reset().play();
       d.actions.kick.setEffectiveWeight(1);
-      d.actions.kick.setLoop(THREE.LoopOnce, 1);
-      d.actions.kick.clampWhenFinished = true;
-      d.animState = 'kick';
+      if (d.actions.run) d.actions.run.setEffectiveWeight(0);
+    } else if (!kickingNow && d.actions?.kick?.getEffectiveWeight() > 0) {
+      d.actions.kick.setEffectiveWeight(0);
+      if (d.actions.run) d.actions.run.setEffectiveWeight(1);
     }
 
-    const kickingNow = d.kickTimer > 0;
-    const moving = speed > 0.55 && !kickingNow && d.slideBlend < 0.15;
+    if (d.actions?.idle) {
+      if (!d.actions.idle.isRunning()) d.actions.idle.play();
+    } else if (d.actions?.run && !kickingNow) {
+      const startMove = d.moveThreshold;
+      const stopMove = Math.max(0.3, d.moveThreshold - 0.35);
+      if (!d.locomotion && speed > startMove && d.slideBlend < 0.12) d.locomotion = true;
+      else if (d.locomotion && speed < stopMove) d.locomotion = false;
 
-    if (!kickingNow && d.animState === 'kick') {
-      d.animState = moving ? 'run' : 'idle';
-      if (d.actions.kick) d.actions.kick.setEffectiveWeight(0);
-    }
-
-    if (!kickingNow) {
-      if (moving && d.actions?.run) {
-        if (d.animState !== 'run') {
-          fadeAction(d.actions.idle, d.actions.run, 0.18);
-          d.animState = 'run';
-        }
+      if (d.locomotion) {
+        const pace = THREE.MathUtils.lerp(0.95, 1.25, Math.min(speed / 6.5, 1));
+        d.actions.run.setEffectiveTimeScale(pace);
         d.actions.run.setEffectiveWeight(1);
-        if (d.actions.idle) d.actions.idle.setEffectiveWeight(0);
-        d.actions.run.setEffectiveTimeScale(THREE.MathUtils.lerp(0.9, 1.4, Math.min(speed / 6.5, 1)));
-        if (!d.actions.run.isRunning()) d.actions.run.play();
-      } else if (d.actions?.idle) {
-        if (d.animState !== 'idle') {
-          fadeAction(d.actions.run, d.actions.idle, 0.18);
-          d.animState = 'idle';
-        }
-        d.actions.idle.setEffectiveWeight(1);
-        if (d.actions.run) d.actions.run.setEffectiveWeight(0);
-        if (!d.actions.idle.isRunning()) d.actions.idle.play();
-      } else if (d.actions?.run) {
+      } else {
+        d.actions.run.setEffectiveTimeScale(0);
         d.actions.run.setEffectiveWeight(1);
-        d.actions.run.setEffectiveTimeScale(moving ? Math.min(speed / 5, 1.4) : 0);
-        if (!moving) d.actions.run.time = 0;
       }
+      if (!d.actions.run.isRunning()) d.actions.run.play();
     }
 
     d.mixer.update(dt);
