@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=28">
+  <link rel="stylesheet" href="/css/style.css?v=29">
 </head>
 <body>
   <div id="app">
@@ -157,8 +157,9 @@
 
       <div class="match-ad-overlay hidden" id="match-ad-overlay">
         <div class="match-ad-panel" id="match-ad-panel">
-          <video id="match-ad-video" playsinline muted></video>
-          <button class="match-ad-close" id="btn-ad-close" type="button" aria-label="Skip ad and start match">✕</button>
+          <video id="match-ad-video" playsinline muted preload="auto" src="https://futuret3ch.com.au/videos/tap/tapmatch/promo2.mp4"></video>
+          <p class="match-ad-status" id="match-ad-status">Loading sponsor…</p>
+          <button class="match-ad-close" id="btn-ad-close" type="button" aria-label="Skip ad and start match">✕ Skip</button>
           <span class="match-ad-label">SPONSORED</span>
         </div>
       </div>
@@ -211,6 +212,6 @@
     </div>
   </div>
 
-  <script type="module" src="/js/main.js?v=28"></script>
+  <script type="module" src="/js/main.js?v=29"></script>
 </body>
 </html>

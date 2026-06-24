@@ -120,9 +120,11 @@ async function startMatch(opts) {
     await waitFrames(1);
     commentaryVoice.init();
     bindAdControls();
+    const adOverlay = $('match-ad-overlay');
+    adOverlay?.classList.remove('sinking', 'playing', 'rising', 'loading', 'error');
     engine.start({
       adVideoEl: $('match-ad-video'),
-      adOverlayEl: $('match-ad-overlay')
+      adOverlayEl: adOverlay
     });
     Audio.init();
     syncVoiceToggleUI();
