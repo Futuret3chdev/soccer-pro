@@ -53,9 +53,6 @@ function prepareSkinnedMesh(mesh) {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.frustumCulled = false;
-  if (mesh.skeleton) mesh.skeleton.pose();
-  mesh.computeBoundingSphere();
-  mesh.computeBoundingBox();
 }
 
 function cloneScene(source) {
@@ -197,8 +194,6 @@ export async function preloadPlayerModels() {
     const gkScene = gk.scene;
     normalizeModel(fieldScene);
     normalizeModel(gkScene);
-    fieldScene.traverse((o) => { if (o.isSkinnedMesh) prepareSkinnedMesh(o); });
-    gkScene.traverse((o) => { if (o.isSkinnedMesh) prepareSkinnedMesh(o); });
     fieldScene.userData._baseHeight = TARGET_HEIGHT;
     gkScene.userData._baseHeight = TARGET_HEIGHT;
 
@@ -262,8 +257,8 @@ export function createPlayer(opts = {}) {
     actions.run.loop = THREE.LoopRepeat;
     actions.run.clampWhenFinished = false;
     actions.run.play();
-    actions.run.time = 0;
     actions.run.setEffectiveTimeScale(0);
+    actions.run.setEffectiveWeight(0);
     if (lib.clips.kick) {
       actions.kick = mixer.clipAction(lib.clips.kick);
       actions.kick.loop = THREE.LoopOnce;
@@ -320,14 +315,18 @@ export function animatePlayer(mesh, speed, kicking = false, dt = 0.016, sliding 
       else if (d.locomotion && speed < stopMove) d.locomotion = false;
 
       const kickBlend = d.actions?.kick?.getEffectiveWeight() || 0;
-      const runWeight = THREE.MathUtils.lerp(1, 0.35, kickBlend);
-      if (d.locomotion && kickBlend < 0.5) {
+      const moving = d.locomotion && kickBlend < 0.5;
+      if (moving) {
         const pace = THREE.MathUtils.lerp(0.95, 1.25, Math.min(speed / 6.5, 1));
         d.actions.run.setEffectiveTimeScale(pace);
+        d.actions.run.setEffectiveWeight(THREE.MathUtils.lerp(1, 0.35, kickBlend));
+      } else if (kickBlend > 0.01) {
+        d.actions.run.setEffectiveTimeScale(0);
+        d.actions.run.setEffectiveWeight(THREE.MathUtils.lerp(0, 0.35, kickBlend));
       } else {
         d.actions.run.setEffectiveTimeScale(0);
+        d.actions.run.setEffectiveWeight(0);
       }
-      d.actions.run.setEffectiveWeight(runWeight);
       if (!d.actions.run.isRunning()) d.actions.run.play();
     }
 
