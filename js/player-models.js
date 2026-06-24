@@ -5,6 +5,7 @@ import { createHumanoid, animateHumanoid, skinColor } from './models.js';
 
 const TARGET_HEIGHT = 1.82;
 const STAND_RUN_PHASE = 0.38;
+const RUN_SPEED_REF = 5.5;
 const ASSETS = {
   fieldRun: '/assets/players/field-run.glb',
   goalkeeper: '/assets/players/goalkeeper.glb'
@@ -34,6 +35,19 @@ function loadGltf(url) {
 function seededRand(seed) {
   const x = Math.sin(seed * 127.1 + seed * seed * 0.17) * 43758.5453;
   return x - Math.floor(x);
+}
+
+/** Mixamo run clips move the hips in world space — strip that or players skate and snap each loop. */
+function stripRootMotion(clip) {
+  if (!clip) return clip;
+  const tracks = clip.tracks.filter((track) => {
+    const name = track.name.toLowerCase();
+    return !(name.endsWith('.position') && (name.includes('hips') || name.includes('root')));
+  });
+  if (tracks.length === clip.tracks.length) return clip;
+  const cleaned = new THREE.AnimationClip(clip.name, clip.duration, tracks);
+  cleaned.resetDuration();
+  return cleaned;
 }
 
 function normalizeModel(root) {
@@ -184,16 +198,23 @@ function applyPlayerLook(root, opts) {
   root.userData.appearance = { number, variant, skinTone, hairColor, height };
 }
 
-function standTimeFor(clip) {
-  return clip ? clip.duration * STAND_RUN_PHASE : 0;
+function standTimeFor(clip, phase = 0) {
+  if (!clip) return 0;
+  return clip.duration * STAND_RUN_PHASE + phase;
 }
 
-function applyStandPose(runAction, standTime) {
-  if (!runAction) return;
-  runAction.setEffectiveWeight(1);
-  runAction.setEffectiveTimeScale(0);
-  runAction.time = standTime;
-  if (!runAction.isRunning()) runAction.play();
+function freezeRun(run, time) {
+  run.setEffectiveWeight(1);
+  run.setEffectiveTimeScale(0);
+  run.time = time;
+  if (!run.isRunning()) run.play();
+}
+
+function syncGroundOffset(root, mixer) {
+  mixer.update(0);
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  return -box.min.y;
 }
 
 export async function preloadPlayerModels() {
@@ -211,7 +232,7 @@ export async function preloadPlayerModels() {
     fieldScene.userData._baseHeight = TARGET_HEIGHT;
     gkScene.userData._baseHeight = TARGET_HEIGHT;
 
-    const runClip = pickClip(fieldRun.animations, 'run', 'mplayer');
+    const runClip = stripRootMotion(pickClip(fieldRun.animations, 'run', 'mplayer'));
 
     library = {
       useGltf: true,
@@ -263,7 +284,8 @@ export function createPlayer(opts = {}) {
 
   const mixer = new THREE.AnimationMixer(root);
   const actions = {};
-  const standTime = lib.standTime || 0;
+  const phase = (variant % 97) * 0.0027;
+  const standTime = standTimeFor(lib.clips.run, phase);
 
   if (isGK && lib.clips.gkIdle) {
     actions.idle = mixer.clipAction(lib.clips.gkIdle);
@@ -273,14 +295,10 @@ export function createPlayer(opts = {}) {
     actions.run = mixer.clipAction(lib.clips.run);
     actions.run.loop = THREE.LoopRepeat;
     actions.run.clampWhenFinished = false;
-    actions.run.play();
-    applyStandPose(actions.run, standTime);
+    freezeRun(actions.run, standTime);
   }
 
-  mixer.update(0);
-  root.updateMatrixWorld(true);
-  const poseBox = new THREE.Box3().setFromObject(root);
-  root.userData.groundOffset = -poseBox.min.y;
+  const groundOffset = syncGroundOffset(root, mixer);
 
   root.userData = {
     isGltf: true,
@@ -289,10 +307,11 @@ export function createPlayer(opts = {}) {
     standTime,
     kickTimer: 0,
     slideBlend: 0,
-    groundOffset: root.userData.groundOffset || 0,
+    groundOffset,
     height: height,
     locomotion: false,
-    moveThreshold: 0.75
+    moveThreshold: 0.55,
+    stopThreshold: 0.22
   };
 
   return root;
@@ -312,41 +331,35 @@ export function animatePlayer(mesh, speed, kicking = false, dt = 0.016, sliding 
 
   if (d.mixer) {
     const kickingNow = d.kickTimer > 0;
-    if (kicking && d.kickTimer <= 0) d.kickTimer = 0.55;
+    if (kicking && d.kickTimer <= 0) d.kickTimer = 0.45;
 
     if (d.actions?.idle) {
       if (!d.actions.idle.isRunning()) d.actions.idle.play();
     } else if (d.actions?.run) {
-      const startMove = d.moveThreshold;
-      const stopMove = Math.max(0.3, d.moveThreshold - 0.35);
-      if (!d.locomotion && speed > startMove && d.slideBlend < 0.12) d.locomotion = true;
-      else if (d.locomotion && speed < stopMove) d.locomotion = false;
-
       const run = d.actions.run;
-      run.setEffectiveWeight(1);
+      const wasMoving = d.locomotion;
+      if (!d.locomotion && speed > d.moveThreshold && d.slideBlend < 0.15) d.locomotion = true;
+      else if (d.locomotion && speed < d.stopThreshold) d.locomotion = false;
 
-      if (d.locomotion && !kickingNow && d.slideBlend < 0.2) {
-        const pace = THREE.MathUtils.lerp(0.95, 1.25, Math.min(speed / 6.5, 1));
+      if (!wasMoving && d.locomotion) {
+        run.time = d.standTime;
+      } else if (wasMoving && !d.locomotion) {
+        freezeRun(run, run.time);
+      }
+
+      run.setEffectiveWeight(1);
+      if (d.locomotion && !kickingNow && d.slideBlend < 0.25) {
+        const pace = THREE.MathUtils.clamp(speed / RUN_SPEED_REF, 0.85, 1.35);
         run.setEffectiveTimeScale(pace);
-      } else if (kickingNow) {
-        run.setEffectiveTimeScale(1.6);
-        run.time = THREE.MathUtils.lerp(
-          run.time,
-          d.standTime + run.getClip().duration * 0.1,
-          1 - Math.exp(-10 * dt)
-        );
       } else {
         run.setEffectiveTimeScale(0);
-        run.time = THREE.MathUtils.lerp(run.time, d.standTime, 1 - Math.exp(-10 * dt));
       }
 
       if (!run.isRunning()) run.play();
+      d.mixer.update(dt);
+    } else {
+      d.mixer.update(dt);
     }
-
-    d.mixer.update(dt);
-    mesh.traverse((o) => {
-      if (o.isSkinnedMesh) o.computeBoundingSphere();
-    });
   }
 
   const baseY = d.groundOffset || 0;
