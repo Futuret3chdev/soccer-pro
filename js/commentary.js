@@ -57,6 +57,13 @@ const INTRO_STARS = [
   c => `Star men on show: ${c.homeStar} for the hosts, ${c.awayStar} for the visitors.`
 ];
 
+const INTRO_FANS = [
+  c => `Listen to the ${c.ultras} — flags waving, flares ready in the home end!`,
+  c => `The ${c.faithful} have packed ${c.endName} tonight. What an atmosphere!`,
+  c => `${c.ultras} and ${c.boys} are bouncing already — this place is rocking!`,
+  c => `You can see the banners in ${c.endName} — ${c.homeName} fans mean business.`
+];
+
 const KICKOFF = [
   c => `And we're underway! ${c.homeName} get us started.`,
   c => `The referee blows — ${c.homeName} kick off against ${c.awayName}.`,
@@ -179,12 +186,19 @@ export class Commentary {
     this.introDone = true;
     const homeStar = this._starName(this.ctx.homeSquad);
     const awayStar = this._starName(this.ctx.awaySquad);
-    const c = buildCtx(this.ctx, { homeStar: homeStar || 'the captain', awayStar: awayStar || 'their talisman' });
+    const groups = this.ctx.fanGroups || [];
+    const c = buildCtx(this.ctx, {
+      homeStar: homeStar || 'the captain',
+      awayStar: awayStar || 'their talisman',
+      ultras: groups[0] || `${this.ctx.homeName} Ultras`,
+      faithful: groups[1] || 'the home faithful',
+      endName: groups[2] || 'the home end',
+      boys: groups[3] || `${this.ctx.homeName} Boys`
+    });
     this.say(pickFn(INTRO, c), 'high', 4);
+    setTimeout(() => this.say(pickFn(INTRO_FANS, c), 'normal', 3), 3200);
     if (homeStar || awayStar) {
-      setTimeout(() => {
-        this.say(pickFn(INTRO_STARS, c), 'normal', 3);
-      }, 3200);
+      setTimeout(() => this.say(pickFn(INTRO_STARS, c), 'normal', 3), 6400);
     }
   }
 

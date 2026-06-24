@@ -121,18 +121,6 @@ export class Stadium {
   }
 
   _buildStadium(loader, opts) {
-    const crowdTex = loader.load('/assets/crowd-texture.jpg');
-    crowdTex.wrapS = THREE.RepeatWrapping;
-    crowdTex.wrapT = THREE.ClampToEdgeWrapping;
-    crowdTex.repeat.set(4, 1);
-    crowdTex.colorSpace = THREE.SRGBColorSpace;
-
-    const crowdMat = new THREE.MeshStandardMaterial({
-      map: crowdTex,
-      roughness: 0.92,
-      side: THREE.FrontSide
-    });
-
     const standMat = new THREE.MeshStandardMaterial({ color: 0x2a3548, roughness: 0.85, metalness: 0.08 });
     const railMat = new THREE.MeshStandardMaterial({ color: 0x8899aa, roughness: 0.4, metalness: 0.5 });
 
@@ -168,26 +156,12 @@ export class Stadium {
       }
     }
 
-    // Backdrop crowd texture on oval screens behind the 3D fans
-    const addCrowdScreen = (w, h, x, y, z, rotY) => {
-      const wall = new THREE.Mesh(new THREE.PlaneGeometry(w, h), crowdMat);
-      wall.position.set(x, y, z);
-      wall.rotation.y = rotY;
-      this.group.add(wall);
-    };
-
-    [-1, 1].forEach((side) => {
-      const z = side * (PITCH_W / 2 + 18);
-      addCrowdScreen(PITCH_L + 28, 14, 0, 9, z, side > 0 ? Math.PI : 0);
-    });
-    [-1, 1].forEach((side) => {
-      const x = side * (PITCH_L / 2 + 18);
-      addCrowdScreen(PITCH_W + 22, 14, x, 9, 0, side > 0 ? -Math.PI / 2 : Math.PI / 2);
-    });
-
     this.crowd = new CrowdSystem(this.group, {
       homeColor: opts.homeColor || '#1565c0',
-      awayColor: opts.awayColor || '#c62828'
+      awayColor: opts.awayColor || '#c62828',
+      homeName: opts.homeName || 'Home',
+      awayName: opts.awayName || 'Away',
+      loader
     });
 
     const roofMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.7, metalness: 0.3 });

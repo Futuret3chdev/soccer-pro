@@ -58,7 +58,9 @@ export class MatchEngine {
     this.loader = new THREE.TextureLoader();
     this.stadium = new Stadium(this.scene, this.loader, {
       homeColor: this.homeColor,
-      awayColor: this.awayColor
+      awayColor: this.awayColor,
+      homeName: this.homeName,
+      awayName: this.awayName
     });
     this._crowdWasWaving = false;
 
@@ -211,8 +213,10 @@ export class MatchEngine {
     CrowdAudio.startAmbient();
     this._crowdWasWaving = false;
     Audio.whistle();
+    const groups = this.stadium.crowd?.getState()?.fanGroups;
+    if (groups) this.commentary.setContext({ fanGroups: groups });
     this.commentary.matchIntro();
-    setTimeout(() => this.commentary.kickoff(), 2800);
+    setTimeout(() => this.commentary.kickoff(), 7200);
     this._render();
     this._loop();
   }
