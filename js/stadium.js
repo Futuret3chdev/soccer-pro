@@ -525,8 +525,14 @@ export class Stadium {
   }
 
   _buildLights() {
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-    this.scene.add(new THREE.HemisphereLight(0xb8dcff, 0x4ade68, 0.72));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.62));
+    this.scene.add(new THREE.HemisphereLight(0xb8dcff, 0x4ade68, 0.78));
+
+    const standFill = new THREE.DirectionalLight(0xfff4e8, 0.48);
+    standFill.position.set(0, 42, -55);
+    standFill.target.position.set(0, 8, 0);
+    this.scene.add(standFill);
+    this.scene.add(standFill.target);
 
     this.sun = new THREE.DirectionalLight(0xfff9ef, 1.65);
     this.sun.position.set(55, 80, 35);

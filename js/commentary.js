@@ -46,9 +46,9 @@ function buildCtx(base, extra = {}) {
 }
 
 const INTRO = [
-  c => `Welcome to Soccer Pro! ${c.homeName} against ${c.awayName} — a huge clash in the MT Ecosystem tonight.`,
-  c => `Good evening! ${c.homeName} host ${c.awayName}. The atmosphere is electric from the first whistle.`,
-  c => `We're live! ${c.homeName} versus ${c.awayName}. Both sides will be desperate for the points.`
+  c => `Welcome to Soccer Pro. ${c.homeName} against ${c.awayName}, a huge clash in the M T Ecosystem tonight.`,
+  c => `Good evening. ${c.homeName} host ${c.awayName}, and the atmosphere is electric from the first whistle.`,
+  c => `We're live. ${c.homeName} versus ${c.awayName}, and both sides will be desperate for the points.`
 ];
 
 const INTRO_STARS = [

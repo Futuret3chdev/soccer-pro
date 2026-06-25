@@ -138,12 +138,11 @@ export class CrowdSystem {
 
   _applyVideoCrowdPanels(videoTex) {
     this.backdrops.forEach((bd) => {
-      if (bd.tier > 1) return;
       const mat = bd.mat;
       mat.map = videoTex;
-      mat.emissive = new THREE.Color(0x223344);
+      mat.emissive = new THREE.Color(0x334455);
       mat.emissiveMap = videoTex;
-      mat.emissiveIntensity = 0.22;
+      mat.emissiveIntensity = 0.28 + bd.tier * 0.04;
       mat.needsUpdate = true;
     });
   }
@@ -158,10 +157,11 @@ export class CrowdSystem {
     const addPanel = (w, h, x, y, z, rotY, tex, tier, tilt = -0.06) => {
       const mat = new THREE.MeshStandardMaterial({
         map: tex,
-        roughness: 0.76,
-        metalness: 0.03,
-        emissive: 0x101820,
-        emissiveIntensity: 0.12 + tier * 0.025
+        roughness: 0.72,
+        metalness: 0.02,
+        emissive: 0x182430,
+        emissiveIntensity: 0.22 + tier * 0.05,
+        side: THREE.DoubleSide
       });
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
       mesh.position.set(x, y, z);
@@ -201,8 +201,8 @@ export class CrowdSystem {
     const armMat = new THREE.MeshStandardMaterial({ roughness: 0.8 });
     const scarfMat = new THREE.MeshStandardMaterial({ roughness: 0.68, emissiveIntensity: 0.1 });
 
-    const perTier = 22;
-    const frontTiers = 1;
+    const perTier = 52;
+    const frontTiers = 3;
     const count = frontTiers * perTier;
 
     this.bodies = new THREE.InstancedMesh(bodyGeo, bodyMat, count);

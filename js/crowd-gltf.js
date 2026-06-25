@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { standDeckTop, standTierRadii } from './stands.js';
+import { STAND_TIER_COUNT, standRailY, standTierRadii } from './stands.js';
 
 const ASSETS = {
   crowdRow: '/assets/crowds/crowd-poly.glb',
   poses: '/assets/crowds/people-poses.glb'
 };
 
-const CROWD_ROW_HEIGHT = 2.35;
-const POSE_FAN_HEIGHT = 1.58;
+const CROWD_ROW_HEIGHT = 2.1;
+const POSE_FAN_HEIGHT = 1.55;
 
 function loadGltf(url) {
   return new Promise((resolve, reject) => {
@@ -32,6 +32,7 @@ function shirtColorForSide(side, home, away) {
 function prepareMesh(mesh) {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
 }
 
 function tintRoot(root, color, amount = 0.52) {
@@ -44,16 +45,17 @@ function tintRoot(root, color, amount = 0.52) {
       const c = mat.color.clone();
       c.lerp(color, amount);
       mat.color.copy(c);
-      mat.roughness = 0.8;
+      mat.roughness = 0.78;
       mat.metalness = 0.03;
       if (mat.emissive) {
         mat.emissive.copy(color);
-        mat.emissiveIntensity = 0.035;
+        mat.emissiveIntensity = 0.06;
       }
     });
   });
 }
 
+/** Returns foot lift so model sits on y=0 before world placement. */
 function fitHeight(root, targetH) {
   root.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(root);
@@ -63,10 +65,14 @@ function fitHeight(root, targetH) {
   root.scale.setScalar(scale);
   root.updateMatrixWorld(true);
   box.setFromObject(root);
-  root.position.y = -box.min.y;
+  return -box.min.y;
 }
 
-/** Dense CGI terrace crowds from Poly Pizza + people pose pack (TurboSquid-style). */
+function crowdDeckY(tier) {
+  return standRailY(tier) + 0.62 + tier * 0.08;
+}
+
+/** Packed CGI terraces — full house on every stand tier. */
 export class CgiCrowdLayer {
   constructor(parentGroup, opts = {}) {
     this.shell = new THREE.Group();
@@ -85,6 +91,7 @@ export class CgiCrowdLayer {
       loadGltf(ASSETS.poses)
     ]);
     this._crowdTemplate = crowdGltf.scene;
+    this._crowdTemplate.traverse((o) => { if (o.isMesh) prepareMesh(o); });
     posesGltf.scene.children.forEach((child) => {
       if (child.type === 'Group' || child.isMesh) this._poseTemplates.push(child);
     });
@@ -94,38 +101,42 @@ export class CgiCrowdLayer {
   }
 
   _buildCrowdRows() {
-    const tiers = 3;
-    for (let tier = 0; tier < tiers; tier++) {
-      const segments = 15 - tier * 2;
+    const depthRows = [0, 0.92, 1.78];
+
+    for (let tier = 0; tier < STAND_TIER_COUNT; tier++) {
+      const segments = 24 - Math.min(tier, 2) * 2;
       const openCenter = Math.PI;
-      const openSpan = tier >= 2 ? 0.48 : 0.32;
+      const openSpan = tier >= 3 ? 0.38 : 0.22;
 
       for (let i = 0; i < segments; i++) {
-        const theta = (i / segments) * Math.PI * 2 + tier * 0.09;
-        if (tier >= 2 && Math.abs(theta - openCenter) < openSpan) continue;
+        const theta = (i / segments) * Math.PI * 2 + tier * 0.06;
+        if (tier >= 3 && Math.abs(theta - openCenter) < openSpan) continue;
 
         const { rx, rz } = standTierRadii(tier);
-        const inset = 0.91 - tier * 0.022;
-        const x = Math.cos(theta) * rx * inset;
-        const z = Math.sin(theta) * rz * inset;
-        const y = standDeckTop(tier);
         const side = fanSide(theta);
         const color = shirtColorForSide(side, this.homeColor, this.awayColor);
+        const y = crowdDeckY(tier);
 
-        const row = this._crowdTemplate.clone(true);
-        fitHeight(row, CROWD_ROW_HEIGHT + tier * 0.28);
-        tintRoot(row, color, side === 'neutral' ? 0.38 : 0.56);
-        row.position.set(x, y, z);
-        row.lookAt(0, y + 0.6, 0);
-        row.rotation.y += (Math.sin(theta * 3.1 + tier) * 0.08);
-        this.shell.add(row);
-        this.chunks.push({
-          obj: row,
-          theta,
-          tier,
-          phase: i * 0.55 + tier,
-          baseY: y,
-          cheer: 0
+        depthRows.forEach((depth, d) => {
+          const inset = (0.93 - tier * 0.018) - depth * 0.028;
+          const x = Math.cos(theta) * rx * inset;
+          const z = Math.sin(theta) * rz * inset;
+
+          const row = this._crowdTemplate.clone(true);
+          const lift = fitHeight(row, CROWD_ROW_HEIGHT + tier * 0.22 + d * 0.12);
+          tintRoot(row, color, side === 'neutral' ? 0.4 : 0.58);
+          row.position.set(x, y + lift, z);
+          row.lookAt(0, y + 0.5, 0);
+          row.rotation.y += Math.sin(theta * 2.7 + tier + d) * 0.1;
+          this.shell.add(row);
+          this.chunks.push({
+            obj: row,
+            theta,
+            tier,
+            phase: i * 0.4 + tier + d * 0.8,
+            baseY: y + lift,
+            cheer: 0
+          });
         });
       }
     }
@@ -133,32 +144,33 @@ export class CgiCrowdLayer {
 
   _buildPoseFans() {
     if (!this._poseTemplates.length) return;
-    const total = 56;
+    const total = 120;
+
     for (let i = 0; i < total; i++) {
-      const tier = i % 2;
-      const theta = (i / total) * Math.PI * 2 + 0.15;
+      const tier = i % STAND_TIER_COUNT;
+      const theta = (i / total) * Math.PI * 2 + tier * 0.12;
       const tmpl = this._poseTemplates[i % this._poseTemplates.length];
       const fan = tmpl.clone(true);
       const { rx, rz } = standTierRadii(tier);
-      const inset = 0.87 - tier * 0.02;
+      const inset = 0.9 - tier * 0.02 - (i % 3) * 0.025;
       const x = Math.cos(theta) * rx * inset;
       const z = Math.sin(theta) * rz * inset;
-      const y = standDeckTop(tier);
+      const y = crowdDeckY(tier);
       const side = fanSide(theta);
       const color = shirtColorForSide(side, this.homeColor, this.awayColor);
 
-      fitHeight(fan, POSE_FAN_HEIGHT);
-      tintRoot(fan, color, 0.58);
-      fan.position.set(x, y, z);
-      fan.lookAt(0, y + 0.45, 0);
-      fan.rotation.y += (i % 5) * 0.06;
+      const lift = fitHeight(fan, POSE_FAN_HEIGHT + tier * 0.06);
+      tintRoot(fan, color, 0.6);
+      fan.position.set(x, y + lift, z);
+      fan.lookAt(0, y + 0.4, z);
+      fan.rotation.y += (i % 7) * 0.09;
       this.shell.add(fan);
       this.chunks.push({
         obj: fan,
         theta,
         tier,
-        phase: i * 0.31,
-        baseY: y,
+        phase: i * 0.27,
+        baseY: y + lift,
         cheer: 0,
         isPose: true
       });
@@ -173,25 +185,25 @@ export class CgiCrowdLayer {
   }
 
   update(t, excitement, wave) {
-    const energy = 0.65 + excitement * 0.75;
+    const energy = 0.7 + excitement * 0.85;
     this.chunks.forEach((c) => {
       c.cheer = Math.max(0, c.cheer - 0.35 * 0.016);
 
       let stand = c.cheer;
       if (wave?.active) {
         const lead = wave.t * wave.speed - c.theta + wave.origin;
-        if (Math.sin(lead) > 0.5) stand = Math.max(stand, 0.75);
+        if (Math.sin(lead) > 0.45) stand = Math.max(stand, 0.8);
       }
 
-      const bob = Math.sin(t * 2.8 + c.phase) * 0.018 * energy;
-      const sway = Math.sin(t * 1.5 + c.phase * 1.3) * 0.025 * energy * (0.4 + stand);
-      const jump = stand * 0.11 + excitement * 0.04;
+      const bob = Math.sin(t * 2.8 + c.phase) * 0.02 * energy;
+      const sway = Math.sin(t * 1.5 + c.phase * 1.3) * 0.028 * energy * (0.45 + stand);
+      const jump = stand * 0.12 + excitement * 0.05;
 
       c.obj.position.y = c.baseY + bob + jump;
       c.obj.rotation.z = sway;
-      c.obj.rotation.x = -stand * 0.06;
-      if (c.isPose && stand > 0.35) {
-        c.obj.rotation.x -= Math.sin(t * 6 + c.phase) * 0.08 * stand;
+      c.obj.rotation.x = -stand * 0.07;
+      if (c.isPose && stand > 0.3) {
+        c.obj.rotation.x -= Math.sin(t * 6 + c.phase) * 0.1 * stand;
       }
     });
   }

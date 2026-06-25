@@ -21,13 +21,13 @@ export function makeCrowdPanoramaTexture(homeHex, awayHex, profile = 'mixed') {
 
   const homeRatio = profile === 'home' ? 0.84 : profile === 'away' ? 0.1 : 0.46;
   const awayRatio = profile === 'away' ? 0.84 : profile === 'home' ? 0.08 : 0.26;
-  const rows = 34;
+  const rows = 42;
 
   for (let row = 0; row < rows; row++) {
     const t = row / rows;
     const y = h * 0.06 + t * h * 0.9;
     const rowH = 12 + t * 20;
-    const cols = Math.floor(64 + t * 48);
+    const cols = Math.floor(78 + t * 58);
     const pitch = w / cols;
 
     for (let col = 0; col < cols; col++) {
