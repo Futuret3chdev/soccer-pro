@@ -2,6 +2,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.m
 import { PITCH_W, PITCH_L, standDeckTop, standRailY, standTierRadii, STAND_TIER_COUNT } from './stands.js';
 import { makeCrowdPanoramaTexture } from './crowd-textures.js';
 import { createCrowdVideoTexture } from './crowd-video.js';
+import { loadCrowdGltf } from './crowd-gltf.js';
 
 const FAN_BODY_HALF = 0.34;
 
@@ -108,7 +109,7 @@ export class CrowdSystem {
     this._color = new THREE.Color();
     this._opts = opts;
     this._videoCrowd = null;
-    this._gltfCrowd = null;
+    this._cgiCrowd = null;
 
     this._buildStandCrowdPanels();
     this._buildOvalCrowd();
@@ -125,7 +126,14 @@ export class CrowdSystem {
     } catch (err) {
       console.warn('Crowd video texture unavailable', err);
     }
-    // GLTF crowd clusters disabled — low-poly blobs read poorly on TV-style broadcast camera.
+    try {
+      this._cgiCrowd = await loadCrowdGltf(this.group, {
+        homeColor: this._opts.homeColor || '#1565c0',
+        awayColor: this._opts.awayColor || '#c62828'
+      });
+    } catch (err) {
+      console.warn('CGI crowd models unavailable', err);
+    }
   }
 
   _applyVideoCrowdPanels(videoTex) {
@@ -193,8 +201,8 @@ export class CrowdSystem {
     const armMat = new THREE.MeshStandardMaterial({ roughness: 0.8 });
     const scarfMat = new THREE.MeshStandardMaterial({ roughness: 0.68, emissiveIntensity: 0.1 });
 
-    const perTier = 38;
-    const frontTiers = 2;
+    const perTier = 22;
+    const frontTiers = 1;
     const count = frontTiers * perTier;
 
     this.bodies = new THREE.InstancedMesh(bodyGeo, bodyMat, count);
@@ -394,6 +402,7 @@ export class CrowdSystem {
         fan.cheer = cheersAway ? 1 : cheersHome ? 0.1 : 0.35;
       }
     });
+    if (this._cgiCrowd) this._cgiCrowd.reactGoal(scoredByHome);
   }
 
   reactBoo() {
@@ -591,6 +600,9 @@ export class CrowdSystem {
     this._updateBanners(this.time);
     this._updateFlares(dt);
     this._updateBackdrops(this.time);
+    if (this._cgiCrowd) {
+      this._cgiCrowd.update(this.time, this.excitement, this.wave);
+    }
   }
 
   getState() {
