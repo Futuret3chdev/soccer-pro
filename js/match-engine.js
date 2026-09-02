@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
 import { Stadium, PITCH_W, PITCH_L } from './stadium.js';
-import { preloadPlayerModels, createPlayer, animatePlayer, setPlayerCamera } from './player-models.js';
+import { preloadPlayerModels, createPlayer, animatePlayer } from './player-models.js';
 import { FORMATIONS, genSquad } from './data.js';
 import { Audio } from './audio.js';
 import { CrowdAudio } from './crowd-audio.js';
@@ -121,7 +121,6 @@ export class MatchEngine {
 
   async prepare() {
     if (this._teamsReady) return;
-    setPlayerCamera(this.camera);
     await Promise.all([
       preloadPlayerModels(),
       this.stadium.assetsReady

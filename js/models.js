@@ -353,7 +353,7 @@ export function createHumanoid(opts = {}) {
   const armL = mkArm(-1, isGK);
   const armR = mkArm(1, isGK);
   const legL = mkLeg(-1);
-  const legR = mkLeg(-1);
+  const legR = mkLeg(1);
 
   group.add(hips, torso, collar, neck, head, hair, armL, armR, legL, legR);
 

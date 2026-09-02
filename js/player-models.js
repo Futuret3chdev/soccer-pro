@@ -1,242 +1,373 @@
 import * as THREE from 'three';
-import { createHumanoid, animateHumanoid } from './models.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { createHumanoid, animateHumanoid, skinColor } from './models.js';
 
 const TARGET_HEIGHT = 1.82;
+const RUN_SPEED_REF = 5.5;
+const ASSETS = {
+  fieldRun: '/assets/players/field-run.glb',
+  aplayer: '/assets/players/aplayer-base.glb',
+  fwplayer: '/assets/players/fwplayer-run.glb',
+  goalkeeper: '/assets/players/goalkeeper.glb',
+  fieldKick: '/assets/players/field-kick.glb'
+};
 
-const FIELD_STILLS = [
-  { idle: '/assets/players/pro-a.png', run: '/assets/players/pro-a-run.png' },
-  { idle: '/assets/players/pro-b.png', run: '/assets/players/pro-b-run.png' },
-  { idle: '/assets/players/pro-c.png', run: '/assets/players/pro-c-run.png' },
-  { idle: '/assets/players/pro-d.png', run: '/assets/players/pro-d-run.png' }
+const BODY_PROFILES = [
+  { build: 1, depth: 1, heightBias: 0 },
+  { build: 0.94, depth: 0.97, heightBias: 0.05 },
+  { build: 1.06, depth: 1.05, heightBias: -0.03 }
 ];
-const GK_STILLS = [
-  { idle: '/assets/players/pro-gk-a.png' },
-  { idle: '/assets/players/pro-gk-b.png' }
-];
+
+const BOOT_COLORS = [0x101010, 0x1a1a1a, 0x0d47a1, 0xb71c1c, 0xf9a825, 0xffffff, 0x2e7d32];
+const HAIR_COLORS = [0x1a1a1a, 0x3e2723, 0x5d4037, 0x8d5524, 0xc68642, 0x4a3728, 0x212121];
 
 let library = null;
-let playerCamera = null;
-const _right = new THREE.Vector3();
-const _look = new THREE.Vector3();
 
-export function setPlayerCamera(camera) {
-  playerCamera = camera;
+function pickClip(clips, ...keys) {
+  if (!clips?.length) return null;
+  for (const key of keys) {
+    const hit = clips.find(c => c.name.toLowerCase().includes(key.toLowerCase()));
+    if (hit) return hit;
+  }
+  return clips[0];
 }
 
-function loadImage(url) {
+function loadGltf(url) {
+  const loader = new GLTFLoader();
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Failed to load ${url}`));
-    img.src = url;
+    loader.load(url, resolve, undefined, reject);
   });
 }
 
-function hexToRgb(hex) {
-  const c = new THREE.Color(hex);
-  return { r: Math.round(c.r * 255), g: Math.round(c.g * 255), b: Math.round(c.b * 255) };
+function seededRand(seed) {
+  const x = Math.sin(seed * 127.1 + seed * seed * 0.17) * 43758.5453;
+  return x - Math.floor(x);
 }
 
-function rgbToHsv(r, g, b) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const d = max - min;
-  let h = 0;
-  if (d !== 0) {
-    if (max === r) h = ((g - b) / d) % 6;
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    h /= 6;
-    if (h < 0) h += 1;
-  }
-  const s = max === 0 ? 0 : d / max;
-  return [h, s, max];
+/** Mixamo run clips move the hips in world space — strip that or players skate and snap each loop. */
+function stripRootMotion(clip) {
+  if (!clip) return clip;
+  const tracks = clip.tracks.filter((track) => {
+    const name = track.name.toLowerCase();
+    return !(name.endsWith('.position') && (name.includes('hips') || name.includes('root')));
+  });
+  if (tracks.length === clip.tracks.length) return clip;
+  const cleaned = new THREE.AnimationClip(clip.name, clip.duration, tracks);
+  cleaned.resetDuration();
+  return cleaned;
 }
 
-function isMagentaPx(r, g, b) {
-  const maxc = Math.max(r, g, b);
-  const minc = Math.min(r, g, b);
-  const sat = maxc === 0 ? 0 : (maxc - minc) / maxc;
-  return r > g && b > g && Math.abs(r - b) < 90 && sat > 0.42 && g < 125;
+function normalizeModel(root) {
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const scale = TARGET_HEIGHT / Math.max(size.y, 0.001);
+  root.scale.setScalar(scale);
+  root.updateMatrixWorld(true);
+  box.setFromObject(root);
+  root.userData.groundOffset = -box.min.y;
+  root.position.y = root.userData.groundOffset;
 }
 
-function isSkinPx(h, s, v) {
-  const orange = h < 0.13 || h > 0.94;
-  return orange && s > 0.16 && s < 0.78 && v > 0.12 && v < 0.93;
+function prepareSkinnedMesh(mesh) {
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
 }
 
-function isWhiteCloth(h, s, v) {
-  if (v < 0.42) return false;
-  if (isSkinPx(h, s, v)) return false;
-  if (s < 0.22) return true;
-  const pinkSpill = (h > 0.72 || h < 0.04) && s < 0.5 && v > 0.55;
-  return pinkSpill;
-}
-
-function paintKit(img, jerseyHex, shortsHex, number, isGK) {
-  const c = document.createElement('canvas');
-  c.width = img.width;
-  c.height = img.height;
-  const ctx = c.getContext('2d');
-  ctx.drawImage(img, 0, 0);
-  const data = ctx.getImageData(0, 0, c.width, c.height);
-  const px = data.data;
-  const jersey = hexToRgb(jerseyHex);
-  const shorts = hexToRgb(shortsHex);
-  const socks = isGK ? { r: 245, g: 245, b: 245 } : jersey;
-
-  for (let i = 0, y = 0; y < c.height; y++) {
-    const ny = y / c.height;
-    for (let x = 0; x < c.width; x++, i += 4) {
-      const r = px[i];
-      const g = px[i + 1];
-      const b = px[i + 2];
-      let a = px[i + 3];
-      if (a < 8) continue;
-      if (isMagentaPx(r, g, b)) {
-        px[i + 3] = 0;
-        continue;
-      }
-      const [h, s, v] = rgbToHsv(r, g, b);
-      if (!isWhiteCloth(h, s, v)) continue;
-      let tgt = null;
-      if (ny < 0.48) tgt = jersey;
-      else if (ny < 0.64) tgt = shorts;
-      else if (ny < 0.86) tgt = socks;
-      if (!tgt) continue;
-      const shade = v;
-      px[i] = Math.min(255, tgt.r * shade * 1.05);
-      px[i + 1] = Math.min(255, tgt.g * shade * 1.05);
-      px[i + 2] = Math.min(255, tgt.b * shade * 1.05);
+function cloneScene(source) {
+  const clone = SkeletonUtils.clone(source);
+  clone.frustumCulled = false;
+  clone.traverse((o) => {
+    o.frustumCulled = false;
+    if (o.isSkinnedMesh) {
+      prepareSkinnedMesh(o);
+      if (Array.isArray(o.material)) o.material = o.material.map(m => m.clone());
+      else if (o.material) o.material = o.material.clone();
+    } else if (o.isMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+      if (Array.isArray(o.material)) o.material = o.material.map(m => m.clone());
+      else if (o.material) o.material = o.material.clone();
     }
-  }
-  ctx.putImageData(data, 0, 0);
+  });
+  return clone;
+}
 
-  if (number != null) {
-    ctx.save();
-    ctx.font = `bold ${Math.round(c.height * 0.13)}px Bebas Neue, Arial Black, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const nx = c.width * 0.52;
-    const ny = c.height * (isGK ? 0.34 : 0.33);
-    ctx.lineWidth = Math.max(4, c.height * 0.012);
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-    ctx.strokeText(String(number), nx, ny);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(String(number), nx, ny);
-    ctx.restore();
+function makePlayerJerseyTexture(jerseyHex, number, variant = 0, isGK = false) {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 512;
+  const ctx = c.getContext('2d');
+  const base = jerseyHex.startsWith('#') ? jerseyHex : '#1565c0';
+
+  const grad = ctx.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, base);
+  grad.addColorStop(1, '#00000030');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 512, 512);
+
+  if (variant % 3 === 1) {
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(196, 0, 120, 512);
+  } else if (variant % 3 === 2) {
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    for (let i = 0; i < 8; i++) ctx.fillRect(i * 64, 0, 32, 512);
   }
+
+  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  for (let y = 0; y < 512; y += 4) ctx.fillRect(0, y, 512, 2);
+
+  if (isGK) {
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    for (let i = 0; i < 5; i++) ctx.fillRect(48 + i * 84, 100, 36, 320);
+  }
+
+  ctx.font = 'bold 190px Bebas Neue, Arial Black, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 12;
+  ctx.strokeText(String(number), 256, 290);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(String(number), 256, 290);
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
-  tex.needsUpdate = true;
   return tex;
 }
 
+function applyPlayerLook(root, opts) {
+  const {
+    jerseyColor,
+    shortsColor,
+    number,
+    skinTone = 0.5,
+    hairColor = 0x1a1a1a,
+    height = TARGET_HEIGHT,
+    variant = 0,
+    isGK = false,
+    bootColor = 0x101010,
+    modelType = 0
+  } = opts;
+
+  const jersey = new THREE.Color(jerseyColor);
+  const shorts = new THREE.Color(shortsColor);
+  const skin = skinColor(skinTone);
+  const hair = new THREE.Color(hairColor);
+  const jerseyHex = typeof jerseyColor === 'string' ? jerseyColor : `#${jersey.getHexString()}`;
+  const jerseyTex = makePlayerJerseyTexture(jerseyHex, number, variant, isGK);
+  const label = (s) => (s || '').toLowerCase();
+
+  root.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    const tag = label(o.name) + label(o.material.name);
+
+    mats.forEach((mat) => {
+      if (!mat) return;
+      if (/short|pant|trouser/.test(tag)) {
+        if (mat.color) mat.color.copy(shorts);
+      } else if (/boot|shoe|cleat/.test(tag)) {
+        if (mat.color) mat.color.set(bootColor);
+      } else if (/glove/.test(tag)) {
+        if (mat.color) mat.color.set(0xf2f2ec);
+      } else if (/hair/.test(tag)) {
+        if (mat.color) mat.color.set(typeof hairColor === 'string' ? hairColor : `#${hair.getHexString()}`);
+      } else if (/jersey|shirt|kit|torso|chest|uniform|jumper/.test(tag)) {
+        if (mat.color) mat.color.copy(jersey);
+        mat.map = jerseyTex;
+        mat.map.needsUpdate = true;
+      } else if (/skin|head|face|neck|hand|arm|leg|foot|body/.test(tag)) {
+        if (mat.color) mat.color.copy(skin);
+      } else if (mat.color && !mat.map) {
+        mat.color.copy(jersey);
+      }
+      mat.fog = false;
+      mat.needsUpdate = true;
+    });
+  });
+
+  const profile = BODY_PROFILES[modelType % BODY_PROFILES.length];
+  const heightMul = height / TARGET_HEIGHT;
+  const build = (0.94 + (variant % 5) * 0.03) * profile.build;
+  const depth = (0.96 + seededRand(variant + 11) * 0.1) * profile.depth;
+  root.scale.x *= build;
+  root.scale.z *= depth;
+  root.scale.y *= heightMul * (1 + profile.heightBias);
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  root.userData.groundOffset = -box.min.y;
+
+  root.userData.appearance = { number, variant, skinTone, hairColor, height };
+}
+
+function standTimeFor(clip, phase = 0.12) {
+  if (!clip) return 0;
+  return clip.duration * phase;
+}
+
+function freezeRun(run, time) {
+  run.setEffectiveWeight(1);
+  run.setEffectiveTimeScale(0);
+  run.time = time;
+  if (!run.isRunning()) run.play();
+}
+
+function freezeIdle(idle, time = 0) {
+  idle.setEffectiveWeight(1);
+  idle.setEffectiveTimeScale(0);
+  idle.time = time;
+  if (!idle.isRunning()) idle.play();
+}
+
+function syncGroundOffset(root, mixer) {
+  mixer.update(0);
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  return -box.min.y;
+}
+
 export async function preloadPlayerModels() {
-  if (library?.ready) return library;
+  if (library) return library;
   try {
-    const field = await Promise.all(FIELD_STILLS.map(async (s) => ({
-      idle: await loadImage(s.idle),
-      run: s.run ? await loadImage(s.run) : null
-    })));
-    const gk = await Promise.all(GK_STILLS.map(async (s) => ({
-      idle: await loadImage(s.idle),
-      run: null
-    })));
-    library = { ready: true, useStills: true, field, gk };
+    const [fieldRun, aplayer, fwplayer, gk, fieldKick] = await Promise.all([
+      loadGltf(ASSETS.fieldRun),
+      loadGltf(ASSETS.aplayer),
+      loadGltf(ASSETS.fwplayer),
+      loadGltf(ASSETS.goalkeeper),
+      loadGltf(ASSETS.fieldKick)
+    ]);
+
+    const gkScene = gk.scene;
+    normalizeModel(gkScene);
+    gkScene.userData._baseHeight = TARGET_HEIGHT;
+
+    const mRun = stripRootMotion(pickClip(fieldRun.animations, 'run', 'mplayer'));
+    const fwRun = stripRootMotion(pickClip(fwplayer.animations, 'dribble', 'fwplayer', 'jog', 'run'));
+    const aIdle = stripRootMotion(pickClip(aplayer.animations, 'receive', 'soccer', 'idle'));
+    const kickClip = stripRootMotion(pickClip(fieldKick.animations, 'strike', 'kick', 'forward'));
+
+    const variants = [
+      { scene: fieldRun.scene, run: mRun, idle: aIdle, standPhase: 0.12 },
+      { scene: aplayer.scene, run: mRun, idle: aIdle, standPhase: 0 },
+      { scene: fwplayer.scene, run: fwRun, idle: aIdle, standPhase: 0.08 }
+    ];
+    variants.forEach((v) => {
+      normalizeModel(v.scene);
+      v.scene.userData._baseHeight = TARGET_HEIGHT;
+    });
+
+    library = {
+      useGltf: true,
+      gkScene,
+      variants,
+      clips: {
+        gkIdle: pickClip(gk.animations, 'idle', 'breathing', 'goalkeeper'),
+        kick: kickClip
+      }
+    };
   } catch (err) {
-    console.warn('Photoreal player stills failed, using procedural bodies:', err);
-    library = { ready: true, useStills: false };
+    console.warn('GLTF player models failed to load, using procedural fallback:', err);
+    library = { useGltf: false };
   }
   return library;
 }
 
-function makeBlobShadow() {
-  const geo = new THREE.CircleGeometry(0.38, 20);
-  const mat = new THREE.MeshBasicMaterial({
-    color: 0x000000,
-    transparent: true,
-    opacity: 0.32,
-    depthWrite: false
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.y = 0.02;
-  mesh.renderOrder = 1;
-  return mesh;
-}
-
 export function createPlayer(opts = {}) {
   const lib = library;
-  if (!lib?.useStills) return createHumanoid(opts);
+  if (!lib?.useGltf) return createHumanoid(opts);
 
   const {
     jerseyColor = 0x1565c0,
     shortsColor = 0xffffff,
+    skinTone = 0.5,
+    hairColor = HAIR_COLORS[0],
     number = 10,
     height = TARGET_HEIGHT,
     isGK = false,
-    variant = number
+    variant = number,
+    modelType = 0
   } = opts;
 
-  const pack = isGK
-    ? lib.gk[Math.abs(variant) % lib.gk.length]
-    : lib.field[Math.abs(variant) % lib.field.length];
+  const bootColor = BOOT_COLORS[Math.floor(seededRand(variant * 3.7) * BOOT_COLORS.length)];
+  const fieldVariant = lib.variants[modelType % lib.variants.length];
+  const source = isGK ? lib.gkScene : fieldVariant.scene;
+  const root = cloneScene(source);
 
-  const jerseyHex = typeof jerseyColor === 'string' ? jerseyColor : `#${new THREE.Color(jerseyColor).getHexString()}`;
-  const shortsHex = typeof shortsColor === 'string' ? shortsColor : `#${new THREE.Color(shortsColor).getHexString()}`;
-
-  const idleMap = paintKit(pack.idle, jerseyHex, shortsHex, number, isGK);
-  const runMap = pack.run ? paintKit(pack.run, jerseyHex, shortsHex, number, isGK) : idleMap;
-
-  const img = pack.idle;
-  const aspect = img.width / Math.max(img.height, 1);
-  const h = height;
-  const w = h * aspect * (isGK ? 1.05 : 1);
-
-  const mat = new THREE.MeshBasicMaterial({
-    map: idleMap,
-    transparent: true,
-    alphaTest: 0.12,
-    depthWrite: true,
-    fog: false,
-    side: THREE.DoubleSide
+  applyPlayerLook(root, {
+    jerseyColor,
+    shortsColor,
+    number,
+    skinTone,
+    hairColor: typeof hairColor === 'string' ? hairColor : `#${new THREE.Color(hairColor).getHexString()}`,
+    height,
+    variant,
+    isGK,
+    bootColor,
+    modelType
   });
-  const card = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
-  card.scale.set(w, h, 1);
-  card.position.y = h * 0.5;
-  card.name = 'playerCard';
-  card.frustumCulled = false;
 
-  const billboard = new THREE.Group();
-  billboard.add(card);
+  const mixer = new THREE.AnimationMixer(root);
+  const actions = {};
+  const phase = (variant % 97) * 0.0027;
+  const runClip = isGK ? null : fieldVariant.run;
+  const idleClip = isGK ? null : fieldVariant.idle;
+  const standTime = standTimeFor(runClip, fieldVariant.standPhase ?? 0.12) + phase * 0.04;
 
-  const root = new THREE.Group();
-  root.add(billboard);
-  root.add(makeBlobShadow());
+  if (isGK && lib.clips.gkIdle) {
+    actions.idle = mixer.clipAction(lib.clips.gkIdle);
+    actions.idle.loop = THREE.LoopRepeat;
+    actions.idle.time = phase * 8;
+    actions.idle.setEffectiveTimeScale(0.85 + seededRand(variant) * 0.35);
+    actions.idle.play();
+  } else if (runClip && idleClip) {
+    actions.idle = mixer.clipAction(idleClip);
+    actions.idle.loop = THREE.LoopRepeat;
+    actions.idle.time = phase * 8;
+    actions.idle.setEffectiveTimeScale(0.8 + seededRand(variant + 3) * 0.4);
+    actions.run = mixer.clipAction(runClip);
+    actions.run.loop = THREE.LoopRepeat;
+    actions.run.clampWhenFinished = false;
+    actions.run.setEffectiveWeight(0);
+    actions.idle.play();
+  } else if (runClip) {
+    actions.run = mixer.clipAction(runClip);
+    actions.run.loop = THREE.LoopRepeat;
+    actions.run.clampWhenFinished = false;
+    freezeRun(actions.run, standTime);
+  }
+
+  if (!isGK && lib.clips.kick) {
+    try {
+      actions.kick = mixer.clipAction(lib.clips.kick);
+      actions.kick.setLoop(THREE.LoopOnce, 1);
+      actions.kick.clampWhenFinished = true;
+      actions.kick.setEffectiveWeight(0);
+    } catch {
+      actions.kick = null;
+    }
+  }
+
+  const groundOffset = syncGroundOffset(root, mixer);
 
   root.userData = {
-    isGltf: false,
-    isBillboard: true,
-    billboard,
-    card,
-    idleMap,
-    runMap,
-    cardW: w,
-    cardH: h,
-    groundOffset: 0,
-    height: h,
-    runPhase: 0,
+    isGltf: true,
+    mixer,
+    actions,
+    standTime,
+    kickTimer: 0,
+    _kickStarted: false,
+    slideBlend: 0,
+    groundOffset,
+    height: height,
     locomotion: false,
     moveThreshold: 0.55,
-    stopThreshold: 0.22,
-    kickTimer: 0,
-    slideBlend: 0
+    stopThreshold: 0.22
   };
+
   return root;
 }
 
@@ -244,43 +375,99 @@ export function animatePlayer(mesh, speed, kicking = false, dt = 0.016, sliding 
   const d = mesh.userData;
   if (!d) return;
 
-  if (d.isBillboard) {
-    if (playerCamera) {
-      const dx = playerCamera.position.x - mesh.position.x;
-      const dz = playerCamera.position.z - mesh.position.z;
-      d.billboard.rotation.y = Math.atan2(dx, dz) - mesh.rotation.y;
-
-      _right.set(1, 0, 0).applyQuaternion(playerCamera.quaternion);
-      _right.y = 0;
-      if (_right.lengthSq() > 0.0001) _right.normalize();
-      _look.set(Math.sin(mesh.rotation.y), 0, Math.cos(mesh.rotation.y));
-      const side = _look.dot(_right);
-      d.card.scale.x = (side >= 0 ? -1 : 1) * d.cardW;
-    }
-
-    if (d.kickTimer > 0) d.kickTimer -= dt;
-    if (kicking && d.kickTimer <= 0) d.kickTimer = 0.35;
-
-    const moving = speed > d.moveThreshold && !sliding;
-    const map = moving ? d.runMap : d.idleMap;
-    if (d.card.material.map !== map) {
-      d.card.material.map = map;
-      d.card.material.needsUpdate = true;
-    }
-
-    d.runPhase += dt * (0.8 + speed * 1.6);
-    const bob = moving ? Math.abs(Math.sin(d.runPhase * 6.2)) * 0.05 : 0;
-    const kickLean = d.kickTimer > 0 ? 0.04 : 0;
-    d.card.position.y = d.cardH * 0.5 + bob;
-    d.card.rotation.z = sliding ? -0.55 : kickLean;
-    d.card.rotation.x = sliding ? -0.2 : 0;
-    mesh.position.y = d.groundOffset || 0;
-    mesh.rotation.x = THREE.MathUtils.lerp(mesh.rotation.x, 0, 0.25);
-    return;
-  }
-
   if (!d.isGltf) {
     animateHumanoid(mesh, speed, kicking, dt, sliding);
     return;
   }
+
+  d.slideBlend = THREE.MathUtils.lerp(d.slideBlend, sliding ? 1 : 0, 1 - Math.exp(-10 * dt));
+  if (d.kickTimer > 0) d.kickTimer -= dt;
+  else d._kickStarted = false;
+
+  if (d.mixer) {
+    if (kicking && d.kickTimer <= 0) d.kickTimer = 0.55;
+    const kickingNow = d.kickTimer > 0;
+
+    if (d.actions?.kick && kickingNow) {
+      const kick = d.actions.kick;
+      if (kicking && !d._kickStarted) {
+        d._kickStarted = true;
+        try {
+          kick.reset();
+          kick.setEffectiveWeight(1);
+          kick.play();
+        } catch {
+          d.actions.kick = null;
+        }
+      }
+      if (d.actions.idle) d.actions.idle.setEffectiveWeight(0.15);
+      if (d.actions.run) d.actions.run.setEffectiveWeight(0.1);
+      if (!kick.isRunning()) kick.play();
+      d.mixer.update(dt);
+    } else if (d.actions?.idle && d.actions?.run) {
+      const idle = d.actions.idle;
+      const run = d.actions.run;
+      const wasMoving = d.locomotion;
+      if (!d.locomotion && speed > d.moveThreshold && d.slideBlend < 0.15) d.locomotion = true;
+      else if (d.locomotion && speed < d.stopThreshold) d.locomotion = false;
+
+      const moving = d.locomotion && !kickingNow && d.slideBlend < 0.25;
+      const blend = 1 - Math.exp(-14 * dt);
+      if (d.actions.kick) d.actions.kick.setEffectiveWeight(THREE.MathUtils.lerp(d.actions.kick.getEffectiveWeight(), 0, blend));
+      if (moving) {
+        if (!wasMoving) run.time = d.standTime;
+        idle.setEffectiveWeight(THREE.MathUtils.lerp(idle.getEffectiveWeight(), 0, blend));
+        run.setEffectiveWeight(THREE.MathUtils.lerp(run.getEffectiveWeight(), 1, blend));
+        run.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / RUN_SPEED_REF, 0.85, 1.35));
+      } else {
+        idle.setEffectiveWeight(THREE.MathUtils.lerp(idle.getEffectiveWeight(), 1, blend));
+        idle.setEffectiveTimeScale(0.9);
+        run.setEffectiveWeight(THREE.MathUtils.lerp(run.getEffectiveWeight(), 0, blend));
+        run.setEffectiveTimeScale(0);
+      }
+      if (!idle.isRunning()) idle.play();
+      if (!run.isRunning()) run.play();
+      d.mixer.update(dt);
+    } else if (d.actions?.idle) {
+      if (!d.actions.idle.isRunning()) d.actions.idle.play();
+      d.mixer.update(dt);
+    } else if (d.actions?.run) {
+      const run = d.actions.run;
+      const wasMoving = d.locomotion;
+      if (!d.locomotion && speed > d.moveThreshold && d.slideBlend < 0.15) d.locomotion = true;
+      else if (d.locomotion && speed < d.stopThreshold) d.locomotion = false;
+
+      const moving = d.locomotion && !kickingNow && d.slideBlend < 0.25;
+      if (!wasMoving && moving) {
+        run.time = d.standTime;
+      } else if (wasMoving && !moving) {
+        freezeRun(run, d.standTime);
+      } else if (!moving) {
+        freezeRun(run, d.standTime);
+      }
+
+      run.setEffectiveWeight(1);
+      if (moving) {
+        const pace = THREE.MathUtils.clamp(speed / RUN_SPEED_REF, 0.85, 1.35);
+        run.setEffectiveTimeScale(pace);
+      } else {
+        run.setEffectiveTimeScale(0);
+      }
+
+      if (!run.isRunning()) run.play();
+      d.mixer.update(dt);
+    } else {
+      d.mixer.update(dt);
+    }
+  }
+
+  const baseY = d.groundOffset || 0;
+  if (d.slideBlend > 0.02) {
+    mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, baseY + 0.22 * d.slideBlend, 1 - Math.exp(-12 * dt));
+    mesh.rotation.x = THREE.MathUtils.lerp(mesh.rotation.x, -0.35 * d.slideBlend, 0.2);
+    if (sliding) return;
+  }
+
+  mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, baseY, 1 - Math.exp(-14 * dt));
+  mesh.rotation.x = THREE.MathUtils.lerp(mesh.rotation.x, 0, 0.15);
 }
