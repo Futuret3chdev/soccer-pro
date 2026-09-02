@@ -29,7 +29,9 @@ function humanizeLine(text) {
     .replace(/\s+/g, ' ')
     .replace(/,\s*,/g, ',')
     .replace(/!\s+/g, '! ')
-    .replace(/MT Ecosystem/gi, 'M T Ecosystem')
+    .replace(/MT Ecosystem/gi, 'the M T Ecosystem')
+    .replace(/\./g, '. ')
+    .replace(/!/g, '! ')
     .trim();
 }
 
@@ -158,8 +160,8 @@ export class CommentaryVoice {
 
     const synth = window.speechSynthesis;
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.93;
-    u.pitch = 0.97;
+    u.rate = 0.84;
+    u.pitch = 1.02;
     u.volume = 1;
     u.lang = this.voice?.lang || 'en-GB';
     if (this.voice) u.voice = this.voice;

@@ -1,4 +1,4 @@
-import { loadCareer, saveCareer, defaultCareer } from './data.js';
+import { loadCareer, saveCareer, defaultCareer, CLUBS } from './data.js';
 import { Management } from './management.js';
 import { initInput, bindEngine } from './input.js';
 import { Audio } from './audio.js';
@@ -193,22 +193,51 @@ function bindClick(id, fn) {
   });
 }
 
-bindClick('btn-career', () => {
+let pendingMode = 'career';
+let selectedClub = CLUBS.find((c) => c.name === career.clubName) || CLUBS[0];
+
+function renderClubGrid() {
+  const grid = $('club-grid');
+  if (!grid) return;
+  grid.innerHTML = CLUBS.map((c) => `
+    <button type="button" class="club-card${c.name === selectedClub.name ? ' on' : ''}" data-club="${c.name}">
+      <div class="club-kit" style="background:${c.color}"></div>
+      <b>${c.name}</b>
+    </button>
+  `).join('');
+  grid.querySelectorAll('.club-card').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      selectedClub = CLUBS.find((c) => c.name === btn.dataset.club) || CLUBS[0];
+      renderClubGrid();
+    });
+  });
+}
+
+function openClubPick(mode) {
+  pendingMode = mode;
   commentaryVoice.unlock();
-  if (!career.squad?.length) career = defaultCareer();
+  renderClubGrid();
+  showScreen('club');
+}
+
+bindClick('btn-career', () => openClubPick('career'));
+bindClick('btn-quick', () => openClubPick('quick'));
+bindClick('btn-club-back', () => showScreen('title'));
+bindClick('btn-club-confirm', () => {
+  career = defaultCareer(selectedClub);
   saveCareer(career);
+  Audio.init();
+  commentaryVoice.init();
+  if (pendingMode === 'quick') {
+    const opp = CLUBS.find((c) => c.name !== selectedClub.name) || CLUBS[1];
+    quickMode = true;
+    currentFixture = null;
+    startMatch({ opponent: opp.name, squad: career.squad.filter((p) => p.starter).slice(0, 7) });
+    return;
+  }
   initMgmt();
   mgmt.render();
   showScreen('mgmt');
-  Audio.init();
-  commentaryVoice.init();
-});
-
-bindClick('btn-quick', () => {
-  commentaryVoice.unlock();
-  quickMode = true;
-  currentFixture = null;
-  startMatch({ opponent: 'City FC', squad: career.squad.filter(p => p.starter).slice(0, 7) });
 });
 
 bindClick('btn-how', () => {

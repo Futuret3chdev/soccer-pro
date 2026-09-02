@@ -1,7 +1,25 @@
 const FIRST = ['James','Marcus','Lucas','Diego','Omar','Kai','Noah','Ethan','Leo','Adam','Ryan','Alex','Jordan','Sam','Chris','Tyler','Nathan','Oscar','Finn','Hugo','Ivan','Marco','Pablo','Andre','Victor','Daniel','Erik','Felix','Gabriel','Hassan'];
 const LAST = ['Silva','Santos','Garcia','Rodriguez','Martinez','Johnson','Williams','Brown','Davis','Miller','Wilson','Moore','Taylor','Anderson','Thomas','Jackson','White','Harris','Martin','Thompson','Robinson','Clark','Lewis','Lee','Walker','Hall','Allen','Young','King','Wright'];
 const POSITIONS = ['GK','DEF','DEF','MID','MID','FWD'];
-const OPPONENTS = ['City FC','Rovers United','Athletic SC','Harbour FC','Northern Stars','Capital City','Rangers FC','Dynamo FC','Phoenix FC','Victory SC'];
+export const CLUBS = [
+  { name: 'Metro United', color: '#1565c0', shorts: '#ffffff' },
+  { name: 'Harbour FC', color: '#0277bd', shorts: '#ffffff' },
+  { name: 'Northern Stars', color: '#1a237e', shorts: '#ffc107' },
+  { name: 'Capital City', color: '#2e7d32', shorts: '#ffffff' },
+  { name: 'Rangers FC', color: '#4a148c', shorts: '#ffffff' },
+  { name: 'Dynamo FC', color: '#e65100', shorts: '#111111' },
+  { name: 'Phoenix FC', color: '#b71c1c', shorts: '#ffeb3b' },
+  { name: 'Victory SC', color: '#00695c', shorts: '#ffffff' },
+  { name: 'Athletic SC', color: '#0d47a1', shorts: '#c62828' },
+  { name: 'Rovers United', color: '#37474f', shorts: '#ff6f00' },
+  { name: 'City FC', color: '#0277bd', shorts: '#81d4fa' },
+  { name: 'Ironworks FC', color: '#263238', shorts: '#ff8a65' },
+  { name: 'Gold Coast', color: '#f9a825', shorts: '#212121' },
+  { name: 'Pacific FC', color: '#006064', shorts: '#ffffff' },
+  { name: 'United Wolves', color: '#4e342e', shorts: '#eceff1' },
+  { name: 'Royal Athletic', color: '#880e4f', shorts: '#ffffff' },
+];
+const OPPONENTS = CLUBS.map((c) => c.name);
 
 export function rand(min, max) {
   return min + Math.random() * (max - min);
@@ -50,16 +68,18 @@ export function genTransferMarket(n = 8) {
   });
 }
 
-export function defaultCareer() {
+export function defaultCareer(club) {
+  const pickClub = club || CLUBS[0];
   return {
-    clubName: 'Metro United',
-    clubColor: '#1565c0',
+    clubName: pickClub.name,
+    clubColor: pickClub.color,
+    clubShorts: pickClub.shorts,
     budget: 50_000_000,
     matchday: 1,
     record: { w: 0, d: 0, l: 0 },
     squad: genSquad(14),
     formation: '4-2',
-    fixtures: OPPONENTS.map((name, i) => ({
+    fixtures: OPPONENTS.filter((n) => n !== pickClub.name).slice(0, 10).map((name, i) => ({
       id: i + 1,
       opponent: name,
       played: false,

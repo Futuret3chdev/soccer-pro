@@ -175,17 +175,13 @@ function applyPlayerLook(root, opts) {
         if (mat.color) mat.color.set(0xf2f2ec);
       } else if (/hair/.test(tag)) {
         if (mat.color) mat.color.set(typeof hairColor === 'string' ? hairColor : `#${hair.getHexString()}`);
-      } else if (/skin|head|face|neck|hand|arm|leg|body|torso|character|player|techlab|soccer|image/.test(tag) || mat.map) {
-        if (mat.color) {
-          mat.color.set(0xffffff);
-          mat.color.lerp(skin, 0.22);
-          mat.color.lerp(jersey, 0.55);
-        }
-        if (mat.map) {
-          mat.map = jerseyTex;
-          mat.map.needsUpdate = true;
-        }
-      } else if (mat.color) {
+      } else if (/jersey|shirt|kit|torso|chest|uniform|jumper/.test(tag)) {
+        if (mat.color) mat.color.copy(jersey);
+        mat.map = jerseyTex;
+        mat.map.needsUpdate = true;
+      } else if (/skin|head|face|neck|hand|arm|leg|foot|body/.test(tag)) {
+        if (mat.color) mat.color.copy(skin);
+      } else if (mat.color && !mat.map) {
         mat.color.copy(jersey);
       }
       mat.fog = false;
